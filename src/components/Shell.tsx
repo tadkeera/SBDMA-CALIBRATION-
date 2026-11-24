@@ -23,7 +23,7 @@ import {
 import { useApp } from './AppProvider';
 import { db } from '@/core/db/database';
 import { ROLE_LABELS, type UserAccount } from '@/core/types';
-import { DEV_CREDIT_AR, DEV_CREDIT_EN, DEV_CREDIT_URL } from '@/core/constants';
+import { DEV_CREDIT_URL } from '@/core/constants';
 
 const NAV = [
   { href: '/', ar: 'لوحة المؤشرات', en: 'Dashboard', icon: LayoutDashboard, perm: 'instruments.view' as const },
@@ -127,11 +127,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
               {theme === 'light' ? <Moon size={13} /> : <Sun size={13} />}
             </button>
           </div>
-          <p className="mt-3 text-center text-[10px]" style={{ color: 'var(--text-muted)' }}>
-            {t(DEV_CREDIT_AR, DEV_CREDIT_EN)}
-          </p>
-          <p className="mt-0.5 text-center text-[9.5px]" style={{ color: 'var(--text-muted)' }}>
-            <a href={DEV_CREDIT_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)' }}>
+          <p className="mt-3 text-center text-[9.5px]" style={{ color: 'var(--text-muted)' }}>
+            <a href={DEV_CREDIT_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)', fontWeight: 700 }}>
               {t('إبداع للاستضافة', 'Ebda3 Hosting')}
             </a>
           </p>
