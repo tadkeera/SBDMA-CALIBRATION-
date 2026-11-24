@@ -167,6 +167,11 @@ def _styles() -> dict[str, ParagraphStyle]:
             textColor=BRAND, spaceBefore=6, spaceAfter=3,
         ),
         "cell": ParagraphStyle("cell", parent=base["Normal"], fontName=font, fontSize=7.6, leading=9.6),
+        # machine codes are latin-only and must never break mid-token
+        "cell_action": ParagraphStyle(
+            "cell_action", parent=base["Normal"], fontName=font,
+            fontSize=7.2, leading=9.2, splitLongWords=0,
+        ),
         "cellb": ParagraphStyle(
             "cellb", parent=base["Normal"], fontName=bold, fontSize=7.6, leading=9.6
         ),
@@ -515,7 +520,9 @@ def build_certificate_pdf(payload: dict[str, Any]) -> bytes:
                 [
                     Paragraph(str(stamp), st["cell"]),
                     Paragraph(f"{actor}<br/><font size=6 color='#7a868f'>{role}</font>", st["cell"]),
-                    Paragraph(str(action), st["cell"]),
+                    # action codes are long single tokens (RUN_QA_APPROVED_AND_LOCKED);
+                    # give the column room and let them wrap at underscores
+                    Paragraph(str(action).replace("_", "_<wbr/>"), st["cell_action"]),
                     Paragraph(
                         mix(str(reason or "—"), "") if not has_arabic(str(reason or "")) else ar(str(reason)),
                         st["cell"],
@@ -524,7 +531,7 @@ def build_certificate_pdf(payload: dict[str, Any]) -> bytes:
                 ]
             )
         audit_table = Table(
-            audit_table_rows, colWidths=[30 * mm, 30 * mm, 40 * mm, None, 24 * mm], repeatRows=1
+            audit_table_rows, colWidths=[28 * mm, 28 * mm, 46 * mm, None, 24 * mm], repeatRows=1
         )
         audit_table.setStyle(
             TableStyle(
