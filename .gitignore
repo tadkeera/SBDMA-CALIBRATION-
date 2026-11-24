@@ -26,3 +26,7 @@ backups/
 .DS_Store
 .vscode/
 .idea/
+
+# local database dumps and seed credential dumps
+*.sql.gz
+sbdma-seed-credentials.txt

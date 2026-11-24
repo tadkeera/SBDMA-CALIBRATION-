@@ -65,6 +65,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
       ENVIRONMENT: ${ENVIRONMENT:-production}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
+      SBDMA_SEED_ON_START: ${SBDMA_SEED_ON_START:-false}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }

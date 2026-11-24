@@ -9,8 +9,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 RUN useradd -m -u 1001 sbdma && chown -R sbdma:sbdma /srv
+RUN chmod +x /srv/docker-entrypoint.sh
 USER sbdma
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=3 \
   CMD curl -fsS http://127.0.0.1:8000/api/v1/health || exit 1
+ENTRYPOINT ["/srv/docker-entrypoint.sh"]
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers"]

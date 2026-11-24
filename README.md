@@ -1,10 +1,10 @@
 # SBDMA · نظام إدارة ومعايرة الأجهزة المخبرية
 ### Laboratory Calibration & OQ Intelligence Platform — Supreme Board of Drugs & Medical Devices
 
-[![Version](https://img.shields.io/badge/version-1.0.0-21695e)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.1.0-21695e)](VERSION)
 [![ISO/IEC 17025](https://img.shields.io/badge/ISO%2FIEC-17025-21695e)](#الامتثال-التنظيمي)
 [![21 CFR Part 11](https://img.shields.io/badge/21%20CFR-Part%2011-21695e)](#الامتثال-التنظيمي)
-[![Tests](https://img.shields.io/badge/tests-43%20passing-16794f)](#الاختبارات-المنفذة)
+[![Tests](https://img.shields.io/badge/tests-102%20passing-16794f)](#الاختبارات-المنفذة)
 
 ---
 
@@ -20,11 +20,13 @@ Incubators, Stability Chambers).
 | المكوّن | التقنية |
 |---|---|
 | الواجهة الأمامية | Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS |
-| قاعدة البيانات المحلية | IndexedDB عبر Dexie 4 — تعمل داخل المتصفح وتُحفظ تلقائياً |
+| قاعدة البيانات المحلية | IndexedDB عبر Dexie 4 — وضع العمل دون اتصال داخل المتصفح |
+| قاعدة البيانات المركزية | PostgreSQL 17 · SQLAlchemy 2.0 (asyncpg) · Alembic · **Triggers حوكمة** |
 | الرسوم العلمية | Apache ECharts (انحدار OLS، بواقي، GPV، أطياف، مخططات تحكم) |
 | محرك الحسابات (المتصفح) | AST Parser آمن + `decimal.js` — **بدون `eval()`** |
 | محرك الحسابات (الخادم) | Python 3.12 · `decimal.Decimal` · AST مُتحقق منه — **بدون `eval()`** |
-| خادم الإنتاج | FastAPI (Async) · SQLAlchemy 2.0 · PostgreSQL 16 · Alembic |
+| خادم الإنتاج | FastAPI 0.165 (Async) · 27 مساراً في `/api/v1` · Argon2id + JWT · حد طلبات |
+| طبقة الحوكمة في القاعدة | 17 Trigger: تدقيق ملحق فقط، قفل النتائج، قفل التشغيل، حاجز الانتهاء، `updated_at` |
 | الطوابير والكاش | Redis 7 · Celery Worker/Beat |
 | البنية التحتية | Docker Compose · Kubernetes (HPA + PDB + Rolling Updates) · Nginx |
 
@@ -117,12 +119,36 @@ PASS / FAIL / UNDER_REVIEW / INCOMPLETE
 
 ---
 
+## تشغيل الخادم الفعلي (PostgreSQL + FastAPI)
+
+```bash
+# 1) قاعدة البيانات
+createdb sbdma_calibration && createdb sbdma_test
+
+# 2) الترحيلات (تُنشئ 22 جدولاً + 17 Trigger حوكمة)
+cd backend && alembic upgrade head
+
+# 3) البيانات الأولية الحتمية (أقسام، أدوار، صلاحيات، مستخدمون، بروتوكول، جهاز، أدوات مرجعية)
+export SBDMA_ADMIN_PASSWORD='...'   # إلزامي؛ وإلا تُولَّد كلمة مرور عشوائية في /tmp/sbdma-seed-credentials.txt
+python -m app.seed
+
+# 4) التشغيل
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+- التوثيق التفاعلي: `http://localhost:8000/api/docs`
+- فحص الجاهزية الحقيقي (يتصل بـ PostgreSQL فعلاً): `GET /api/v1/health/ready`
+- الاختبارات: `cd backend && pytest -q` → **80 ناجحاً** على قاعدة `sbdma_test` حقيقية تُبنى بالترحيلات.
+
+> **ملاحظة أمنية:** الحسابات المزروعة تحمل `must_change_password=true`، وكل من طلب
+> `change-password` يُبطل جميع جلساته القائمة.
+
 ## الاختبارات المنفذة
 
 | الحزمة | العدد | النتيجة | الأمر |
 |---|---|---|---|
 | محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npm test` |
-| محرك الحسابات الخادم (Python) | 21 | ✅ ناجحة | `cd backend && pytest` |
+| محرك الحسابات + API + الحوكمة (Python/PostgreSQL) | 80 | ✅ ناجحة | `cd backend && pytest` |
 | التدفق الكامل E2E (Playwright) | 1 سيناريو | ✅ 13/13 اختبار مطابق | `node e2e.js` (خارج الحزمة) |
 
 التغطية تشمل: أولويات العمليات، صيغ التدفق والتدرج والحقن الوزني، OLS، `%RSD`، الحساسية
@@ -133,9 +159,14 @@ PASS / FAIL / UNDER_REVIEW / INCOMPLETE
 
 ## الخادم الخلفي
 
-المواصفة الكاملة للتطبيق الخلفي (FastAPI + PostgreSQL + Alembic + Celery) موثقة في
-[`docs/backend-roadmap.md`](docs/backend-roadmap.md)، ومحرك الحسابات المرجعي جاهز ومُختبَر في
-`backend/app/domain/math_engine/ast_engine.py` (21/21 اختباراً ناجحاً).
+**منفَّذ ويعمل فعلياً** (المرحلة A): 21 جدولاً + 17 Trigger حوكمة، 27 مسار REST،
+Argon2id + JWT بتدوير رموز، توقيع إلكتروني، فصل مهام، عزل أقسام، وSeeders حتمية
+من البروتوكول نفسه (108 حدود). التفاصيل: [`docs/backend-roadmap.md`](docs/backend-roadmap.md)
+· [`docs/api.md`](docs/api.md) · [`docs/testing.md`](docs/testing.md).
+
+**أهم ما يُميّز الطبقة الخلفية:** الحواجز الحاسمة لا تعيش في Python وحده، بل في PostgreSQL:
+سجل التدقيق يرفض `UPDATE`/`DELETE`/`TRUNCATE`، والنتائج المقفلة ترفض أي تعديل وتعديل التشغيل
+المقفل مرفوض — مُختبرة بـ SQL مباشر عبر اتصال لا يمرّ بتطبيقنا أصلاً.
 
 ---
 

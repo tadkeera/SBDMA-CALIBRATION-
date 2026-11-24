@@ -1,0 +1,286 @@
+"""Authentication: login, lockout, refresh rotation, logout, session revocation."""
+
+from __future__ import annotations
+
+import uuid
+from datetime import datetime, timedelta, timezone
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from app.core.config import get_settings
+from app.core.exceptions import (
+    AccountLockedError,
+    AuthenticationError,
+    ValidationFailedError,
+)
+from app.core.logging import get_logger
+from app.core.rbac import ROLE_PERMISSIONS, Principal
+from app.core.security import (
+    create_token,
+    decode_token,
+    hash_password,
+    password_strength_errors,
+    sha256_hex,
+    verify_password,
+)
+from app.models.rbac import LabDepartment, RefreshSession, User
+from app.services.audit_service import AuditService
+
+log = get_logger("sbdma.auth")
+
+
+class AuthService:
+    def __init__(self, session: AsyncSession) -> None:
+        self.session = session
+        self.settings = get_settings()
+        self.audit = AuditService(session)
+
+    async def _find_user(self, username: str) -> User | None:
+        result = await self.session.execute(
+            select(User).where(User.username == username, User.deleted_at.is_(None))
+        )
+        return result.scalar_one_or_none()
+
+    async def authenticate(
+        self, *, username: str, password: str, ip: str | None = None, user_agent: str | None = None
+    ) -> tuple[User, Principal, dict[str, str]]:
+        user = await self._find_user(username)
+        now = datetime.now(timezone.utc)
+
+        # Uniform failure message: never reveal whether the account exists.
+        if user is None:
+            await self.audit.record(
+                action="LOGIN_FAILED",
+                entity_type="user",
+                entity_id="unknown",
+                actor_label=username,
+                reason="unknown username",
+                ip_address=ip,
+            )
+            raise AuthenticationError()
+
+        if user.locked_until and user.locked_until > now:
+            raise AccountLockedError()
+
+        if not user.is_active or user.deleted_at is not None:
+            await self.audit.record(
+                action="LOGIN_BLOCKED_INACTIVE",
+                entity_type="user",
+                entity_id=user.id,
+                actor_label=user.username,
+                reason="account disabled",
+                ip_address=ip,
+            )
+            raise AuthenticationError(
+                message_ar="الحساب معطل — راجع مسؤول النظام",
+                message_en="Account disabled — contact the system administrator",
+            )
+
+        valid, rehash = verify_password(password, user.password_hash)
+        if not valid:
+            user.failed_login_count += 1
+            if user.failed_login_count >= self.settings.max_failed_logins:
+                user.locked_until = now + timedelta(minutes=self.settings.lockout_minutes)
+                user.failed_login_count = 0
+                await self.audit.record(
+                    action="ACCOUNT_LOCKED",
+                    entity_type="user",
+                    entity_id=user.id,
+                    actor_label=user.username,
+                    reason=f"locked after {self.settings.max_failed_logins} failed attempts",
+                    ip_address=ip,
+                )
+            await self.audit.record(
+                action="LOGIN_FAILED",
+                entity_type="user",
+                entity_id=user.id,
+                actor_label=user.username,
+                reason="wrong password",
+                ip_address=ip,
+            )
+            await self.session.flush()
+            raise AuthenticationError()
+
+        if rehash:
+            user.password_hash = rehash
+
+        user.failed_login_count = 0
+        user.locked_until = None
+        user.last_login_at = now
+
+        roles = [r.code for r in user.roles] or ["VIEWER"]
+        principal = Principal.build(
+            user_id=user.id,
+            username=user.username,
+            roles=roles,
+            department_id=user.department_id,
+        )
+
+        tokens = await self._issue_tokens(user, principal, ip=ip, user_agent=user_agent)
+
+        await self.audit.record(
+            action="LOGIN_SUCCESS",
+            entity_type="user",
+            entity_id=user.id,
+            actor_label=user.username,
+            actor_id=user.id,
+            role_label=principal.primary_role,
+            department_id=user.department_id,
+            reason="successful sign-in",
+            ip_address=ip,
+        )
+        await self.session.flush()
+        return user, principal, tokens
+
+    async def _issue_tokens(
+        self,
+        user: User,
+        principal: Principal,
+        *,
+        ip: str | None,
+        user_agent: str | None,
+    ) -> dict[str, str]:
+        settings = self.settings
+        access = create_token(
+            str(user.id),
+            "access",
+            role=principal.primary_role,
+            department_id=str(user.department_id) if user.department_id else None,
+            extra={"roles": principal.roles, "sid": str(uuid.uuid4())},
+        )
+        refresh = create_token(str(user.id), "refresh", role=principal.primary_role)
+        now = datetime.now(timezone.utc)
+        self.session.add(
+            RefreshSession(
+                id=uuid.uuid4(),
+                user_id=user.id,
+                token_hash=sha256_hex(refresh),
+                issued_at=now,
+                expires_at=now + timedelta(days=settings.jwt_refresh_ttl_days),
+                user_agent=(user_agent or "")[:255] or None,
+                ip_address=ip,
+            )
+        )
+        return {
+            "access_token": access,
+            "refresh_token": refresh,
+            "token_type": "bearer",
+            "expires_in": str(settings.jwt_access_ttl_minutes * 60),
+            "refresh_expires_in": str(settings.jwt_refresh_ttl_days * 86400),
+        }
+
+    async def refresh(self, refresh_token: str) -> dict[str, str]:
+        try:
+            payload = decode_token(refresh_token, expected_kind="refresh")
+        except ValueError:
+            raise AuthenticationError(
+                message_ar="جلسة غير صالحة — يلزم إعادة تسجيل الدخول",
+                message_en="Invalid session — please sign in again",
+            ) from None
+
+        token_hash = sha256_hex(refresh_token)
+        row = (
+            await self.session.execute(
+                select(RefreshSession).where(RefreshSession.token_hash == token_hash)
+            )
+        ).scalar_one_or_none()
+        if row is None or row.revoked_at is not None or row.expires_at < datetime.now(timezone.utc):
+            raise AuthenticationError(
+                message_ar="جلسة منتهية أو ملغاة", message_en="Session expired or revoked"
+            )
+
+        user = await self.session.get(User, uuid.UUID(payload["sub"]))
+        if user is None or not user.is_active:
+            raise AuthenticationError()
+
+        # rotation: the presented token is single-use
+        row.revoked_at = datetime.now(timezone.utc)
+        principal = Principal.build(
+            user_id=user.id,
+            username=user.username,
+            roles=[r.code for r in user.roles] or ["VIEWER"],
+            department_id=user.department_id,
+        )
+        return await self._issue_tokens(user, principal, ip=row.ip_address, user_agent=row.user_agent)
+
+    async def logout(self, *, user_id: uuid.UUID, refresh_token: str | None, ip: str | None = None) -> None:
+        """Revoke the presented refresh session, or every session for the user."""
+        stmt = select(RefreshSession).where(
+            RefreshSession.user_id == user_id, RefreshSession.revoked_at.is_(None)
+        )
+        if refresh_token:
+            stmt = stmt.where(RefreshSession.token_hash == sha256_hex(refresh_token))
+        rows = (await self.session.execute(stmt)).scalars().all()
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            row.revoked_at = now
+        await self.audit.record(
+            action="LOGOUT",
+            entity_type="user",
+            entity_id=user_id,
+            actor_label=str(user_id),
+            actor_id=user_id,
+            reason=f"revoked {len(rows)} session(s)",
+            ip_address=ip,
+        )
+
+    async def change_password(
+        self, *, user_id: uuid.UUID, current_password: str, new_password: str, reason: str
+    ) -> None:
+        user = await self.session.get(User, user_id)
+        if user is None:
+            raise AuthenticationError()
+        valid, _ = verify_password(current_password, user.password_hash)
+        if not valid:
+            raise AuthenticationError(
+                message_ar="كلمة المرور الحالية غير صحيحة",
+                message_en="Current password is incorrect",
+            )
+        problems = password_strength_errors(new_password)
+        if problems:
+            raise ValidationFailedError(details={"password_rules": problems})
+
+        user.password_hash = hash_password(new_password)
+        user.must_change_password = False
+
+        # every existing session is invalidated on password change
+        rows = (
+            await self.session.execute(
+                select(RefreshSession).where(
+                    RefreshSession.user_id == user_id, RefreshSession.revoked_at.is_(None)
+                )
+            )
+        ).scalars().all()
+        now = datetime.now(timezone.utc)
+        for row in rows:
+            row.revoked_at = now
+
+        await self.audit.record(
+            action="PASSWORD_CHANGED",
+            entity_type="user",
+            entity_id=user_id,
+            actor_label=user.username,
+            actor_id=user_id,
+            reason=reason,
+        )
+
+
+async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal:
+    user = await session.get(User, user_id)
+    if user is None or not user.is_active or user.deleted_at is not None:
+        raise AuthenticationError()
+    roles = [r.code for r in user.roles] or ["VIEWER"]
+    return Principal.build(
+        user_id=user.id,
+        username=user.username,
+        roles=roles,
+        department_id=user.department_id,
+    )
+
+
+def permissions_for_roles(roles: list[str]) -> list[str]:
+    perms: set[str] = set()
+    for role in roles:
+        perms.update(ROLE_PERMISSIONS.get(role, ()))
+    return sorted(perms)
