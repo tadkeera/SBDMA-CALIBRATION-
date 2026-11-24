@@ -38,6 +38,19 @@ export function Chart({ option, height = 300 }: { option: EChartsOption; height?
     };
   }, [option, theme]);
 
+  // A chart can be created while its card is still 0 px wide (hidden tab, or a
+  // card that mounts before layout settles). Re-measure whenever the box
+  // changes so the canvas is never left blank.
+  useEffect(() => {
+    if (!ref.current) return;
+    const box = ref.current;
+    const observer = new ResizeObserver(() => {
+      if (box.clientWidth > 0) inst.current?.resize();
+    });
+    observer.observe(box);
+    return () => observer.disconnect();
+  }, []);
+
   useEffect(() => {
     const onResize = () => inst.current?.resize();
     window.addEventListener('resize', onResize);

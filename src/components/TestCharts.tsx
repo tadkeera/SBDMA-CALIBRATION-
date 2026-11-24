@@ -30,7 +30,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         const err = arr('pct_error');
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
-          grid: { left: 44, right: 44, top: 30, bottom: 34 },
+          grid: { left: 54, right: 54, top: 30, bottom: 38 },
           legend: { top: 0, textStyle: { color: c.axis, fontSize: 10.5 } },
           xAxis: { type: 'category', data: set.map((x) => `${x}`), ...axis, name: t('التدفق المضبوط mL/min', 'Set mL/min'), nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.axis, fontSize: 10 } },
           yAxis: [
@@ -66,7 +66,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
           legend: { top: 0, textStyle: { color: c.axis, fontSize: 10.5 } },
-          grid: { left: 44, right: 20, top: 30, bottom: 34 },
+          grid: { left: 54, right: 30, top: 30, bottom: 38 },
           xAxis: { type: 'category', data: ['10%', '50%', '90%', '100%'], ...axis },
           yAxis: [
             { type: 'value', ...axis, name: t('النسبة الفعلية %', 'Actual %') },
@@ -110,7 +110,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
           legend: { top: 0, textStyle: { color: c.axis, fontSize: 10.5 } },
-          grid: { left: 52, right: 20, top: 30, bottom: 34 },
+          grid: { left: 60, right: 30, top: 30, bottom: 38 },
           xAxis: { type: 'value', ...axis, name: test.code === 'T10' ? t('التركيز mg/L', 'Conc. mg/L') : t('الحجم µL', 'Volume µL'), nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.axis, fontSize: 10 } },
           yAxis: { type: 'value', ...axis, name: test.code === 'T10' ? 'AU' : 'mAU·s' },
           series: [
@@ -146,7 +146,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         const fit = ols(xs, ys);
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
-          grid: { left: 52, right: 20, top: 20, bottom: 34 },
+          grid: { left: 58, right: 26, top: 20, bottom: 38 },
           xAxis: { type: 'category', data: xs.map(String), ...axis },
           yAxis: { type: 'value', ...axis, name: t('البواقي', 'Residuals') },
           series: [
@@ -172,7 +172,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         });
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
-          grid: { left: 46, right: 20, top: 24, bottom: 34 },
+          grid: { left: 56, right: 26, top: 24, bottom: 38 },
           xAxis: { type: 'category', data: xs.map(String), ...axis, name: 'nm', nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.axis, fontSize: 10 } },
           yAxis: { type: 'value', ...axis, name: 'AU' },
           series: [
@@ -206,7 +206,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
           const sd = Math.sqrt(bl.reduce((a, b) => a + (b - mean) ** 2, 0) / Math.max(1, bl.length - 1));
           return {
             tooltip: { trigger: 'axis', ...baseTooltip },
-            grid: { left: 52, right: 20, top: 24, bottom: 34 },
+            grid: { left: 58, right: 26, top: 24, bottom: 38 },
             xAxis: { type: 'category', data: bl.map((_, i) => String(i + 1)), ...axis, name: t('الفترة (30 ث)', 'Segment (30 s)'), nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.axis, fontSize: 10 } },
             yAxis: { type: 'value', ...axis, name: 'mAU' },
             series: [
@@ -232,7 +232,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
           legend: { top: 0, textStyle: { color: c.axis, fontSize: 10.5 } },
-          grid: { left: 52, right: 44, top: 30, bottom: 34 },
+          grid: { left: 58, right: 50, top: 30, bottom: 38 },
           xAxis: { type: 'category', data: rts.map((_, i) => `#${i + 1}`), ...axis, name: t('رقم الحقنة', 'Injection'), nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.axis, fontSize: 10 } },
           yAxis: [
             { type: 'value', ...axis, name: t('زمن الاستبقاء', 'RT (min)'), scale: true },
@@ -270,7 +270,7 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         if (!vals.some((v) => v !== null)) return null;
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
-          grid: { left: 46, right: 20, top: 24, bottom: 30 },
+          grid: { left: 56, right: 26, top: 24, bottom: 36 },
           xAxis: { type: 'category', data: cats, ...axis },
           yAxis: { type: 'value', ...axis, name: '°C', scale: true },
           series: [
@@ -288,22 +288,87 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
         } as EChartsOption;
       }
       case 'bar': {
-        const keys = test.metrics;
-        const data = keys.map((k) => {
+        /**
+         * T01/T03/T05 mix units (nm, mV, MPa, °C, %, mAU) — plotting them on one
+         * raw axis would be meaningless. Each metric is therefore expressed as a
+         * share of the acceptance limit that was actually applied to it, which
+         * is dimensionless and comparable. The raw value stays in the tooltip
+         * and in the value label, so nothing is hidden.
+         */
+        const rows = test.metrics.map((k) => {
           const ev = result.metricEvaluations.find((m) => m.metricKey === k);
-          return { name: k, value: typeof o[k] === 'number' ? Number((o[k] as number).toFixed(4)) : null, ok: ev?.status === 'PASS' };
+          const value = typeof o[k] === 'number' ? (o[k] as number) : null;
+          const limit = /[\d.]+/.exec(ev?.limitText ?? '');
+          const bound = limit ? Number(limit[0]) : NaN;
+          const pct =
+            value !== null && Number.isFinite(bound) && bound !== 0
+              ? Number(((value / bound) * 100).toFixed(1))
+              : null;
+          return {
+            name: k,
+            value: pct,
+            raw: value,
+            unit: ev?.unit ?? '',
+            limitText: ev?.limitText ?? '—',
+            ok: ev?.status === 'PASS',
+          };
         });
         return {
-          tooltip: { trigger: 'axis', ...baseTooltip },
-          grid: { left: 110, right: 24, top: 16, bottom: 26 },
-          xAxis: { type: 'value', ...axis },
-          yAxis: { type: 'category', data: data.map((d) => d.name), ...axis },
+          tooltip: {
+            trigger: 'axis',
+            ...baseTooltip,
+            formatter: (params: any) => {
+              const p = Array.isArray(params) ? params[0] : params;
+              const row = rows[p.dataIndex];
+              return [
+                `<b>${row.name}</b>`,
+                `${t('القيمة', 'Value')}: ${row.raw === null ? '—' : `${row.raw} ${row.unit}`}`,
+                `${t('الحد المطبق', 'Applied limit')}: ${row.limitText}`,
+                `${t('النسبة من الحد', 'Share of limit')}: ${row.value === null ? '—' : `${row.value}%`}`,
+              ].join('<br/>');
+            },
+          },
+          grid: { left: 128, right: 46, top: 14, bottom: 40 },
+          xAxis: {
+            type: 'value',
+            ...axis,
+            name: t('% من حد القبول المطبق', '% of applied limit'),
+            nameLocation: 'middle',
+            nameGap: 26,
+            nameTextStyle: { color: c.axis, fontSize: 10 },
+          },
+          yAxis: {
+            type: 'category',
+            data: rows.map((d) => d.name),
+            ...axis,
+            axisLabel: { ...(axis as any).axisLabel, fontSize: 9.5, width: 116, overflow: 'truncate' },
+          },
           series: [
             {
               type: 'bar',
-              data: data.map((d) => ({ value: d.value, itemStyle: { color: d.ok === false ? c.fail : c.brand } })),
-              barWidth: '46%',
-              label: { show: true, position: 'right', fontSize: 10, color: c.text },
+              data: rows.map((d) => ({
+                value: d.value,
+                itemStyle: { color: d.ok ? c.brand : c.fail },
+              })),
+              barWidth: '52%',
+              markLine: {
+                silent: true,
+                symbol: 'none',
+                lineStyle: { color: c.fail, type: 'dashed', width: 1.2 },
+                label: { formatter: '100%', fontSize: 9.5, color: c.fail },
+                data: [{ xAxis: 100 }],
+              },
+              label: {
+                show: true,
+                position: 'right',
+                fontSize: 9.5,
+                color: c.text,
+                formatter: (p: any) => {
+                  const row = rows[p.dataIndex];
+                  if (row?.value === null) return '—';
+                  return `${row.raw} ${row.unit}`.trim();
+                },
+              },
             },
           ],
         } as EChartsOption;

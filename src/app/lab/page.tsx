@@ -16,13 +16,23 @@ import {
 import { useApp } from '@/components/AppProvider';
 import { Card, EmptyState, Field, Metric, Modal, Skeleton, StatusChip, Toolbar } from '@/components/ui';
 import { TestChart } from '@/components/TestCharts';
-import { appendAudit, db } from '@/core/db/database';
-import { fingerprint, runCalibration } from '@/core/engine/runEngine';
+import { db } from '@/core/db/database';
+import {
+  ApiError,
+  OfflineError,
+  api,
+  downloadReport,
+  toInstrument,
+  toReferenceEquipment,
+  toRunTestResults,
+  type ServerRun,
+} from '@/core/api/client';
+import { SOURCE_LABEL } from '@/core/api/mode';
+import { runCalibration } from '@/core/engine/runEngine';
 import { roundForDisplay } from '@/core/engine/safeMath';
 import { BREAKDOWN_MATRIX, LIMITS, TESTS, testsForComponent } from '@/core/protocol';
 import {
   LIMIT_SOURCES,
-  ROLE_PERMISSIONS,
   SOURCE_LABELS,
   type Instrument,
   type LimitSource,
@@ -33,7 +43,7 @@ import {
 } from '@/core/types';
 
 export default function LabPage() {
-  const { t, lang, ready, user, notify } = useApp();
+  const { t, lang, ready, user, notify, can, readThrough, source, setSource } = useApp();
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [refEq, setRefEq] = useState<ReferenceEquipment[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,19 +61,82 @@ export default function LabPage() {
   const [errors, setErrors] = useState<string[]>([]);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [savedRun, setSavedRun] = useState<RunRecord | null>(null);
+  const [serverRun, setServerRun] = useState<ServerRun | null>(null);
+  const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signaturePassword, setSignaturePassword] = useState('');
+  const [signatureReason, setSignatureReason] = useState('');
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [signing, setSigning] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
     (async () => {
-      const d = db();
-      setInstruments(await d.instruments.toArray());
-      setRefEq(await d.referenceEquipment.toArray());
-      setLoading(false);
+      try {
+        const [{ data: rows, source: stamp }, refs] = await Promise.all([
+          readThrough(
+            () => api.instruments(),
+            async () => {
+              const cached = await db().instruments.toArray();
+              return cached.map((c) => ({
+                id: c.id,
+                department_id: c.departmentCode,
+                asset_code: c.assetCode,
+                category: c.category,
+                manufacturer: c.manufacturer,
+                model: c.model,
+                part_number: c.partNumber,
+                serial_number: c.serialNumber,
+                software_version: c.softwareVersion,
+                calibration_freq_days: c.calibrationFreqDays,
+                last_calibration_date: c.lastCalibrationDate,
+                next_due_date: c.nextDueDate,
+                status: c.status,
+                d2_lamp_hours: c.d2LampHours,
+              }));
+            },
+          ),
+          readThrough(
+            () => api.referenceEquipment(),
+            async () => {
+              const cached = await db().referenceEquipment.toArray();
+              return cached.map((c) => ({
+                id: c.id,
+                equipment_code: c.code,
+                name_ar: c.nameAr,
+                name_en: c.nameEn,
+                serial_number: c.serialNumber,
+                certificate_no: c.certificateNo,
+                calibrated_by: c.calibratedBy,
+                calibration_date: c.calibrationDate,
+                expiry_date: c.expiryDate,
+                correction_table_jsonb: c.correctionTable ?? [],
+                is_active: c.isActive,
+                expired: new Date(c.expiryDate).getTime() < Date.now(),
+                days_to_expiry: Math.ceil((new Date(c.expiryDate).getTime() - Date.now()) / 86400000),
+              }));
+            },
+          ),
+        ]);
+        setSource(stamp);
+        setInstruments(rows.map((row) => toInstrument(row)));
+        setRefEq(refs.data.map((row) => toReferenceEquipment(row)));
+        if (rows.length) setSelectedInstrument((prev) => prev || rows[0].id);
+      } catch (error) {
+        setLoadError(
+          error instanceof ApiError
+            ? error.text(lang)
+            : t('تعذر تحميل سجل الأجهزة من الخادم.', 'The instrument register could not be loaded.'),
+        );
+      } finally {
+        setLoading(false);
+      }
     })();
-  }, [ready]);
+  }, [ready, readThrough, setSource, lang, t]);
 
   const instrument = instruments.find((i) => i.id === selectedInstrument) ?? null;
-  const canRun = user ? ROLE_PERMISSIONS[user.role].includes('calibration.run') : false;
+  const canRun = can('calibration.run');
+  const canExport = can('reports.export');
 
   /** Break-down mode restricts the required scope to the mandatory retest matrix. */
   const scopedTests: TestSpec[] = useMemo(() => {
@@ -163,84 +236,128 @@ export default function LabPage() {
     }
   };
 
+  /**
+   * Save path. The client engine above is a preview; the server engine is
+   * authoritative and its verdict is what gets stored. We create the run, execute
+   * it with the raw readings, then surface the server's own summary.
+   */
   const persistRun = async () => {
     if (!result || !instrument || !user) return;
-    const executionCode = `RUN-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${String(Math.floor(Math.random() * 9000) + 1000)}`;
-    const payload = {
-      executionCode,
-      instrumentId: instrument.id,
-      protocolCode: 'SHIMADZU-LC2050C-UV-CAL',
-      runType,
-      results: result.results,
-      startedAt: new Date().toISOString(),
-    };
-    const hash = await fingerprint(payload);
-    const record: RunRecord = {
-      id: `run-${Date.now()}`,
-      executionCode,
-      instrumentId: instrument.id,
-      instrumentName: `${instrument.manufacturer} ${instrument.model}`,
-      protocolCode: 'SHIMADZU-LC2050C-UV-CAL',
-      runType,
-      ambientTempC: Number(ambientTemp),
-      ambientHumidity: Number(ambientHumidity),
-      analyst: user.username,
-      reviewer: null,
-      qaApprover: null,
-      overallStatus: result.overall,
-      results: result.results,
-      startedAt: new Date().toISOString(),
-      completedAt: new Date().toISOString(),
-      isLocked: false,
-      certificateHash: hash,
-      breakdownComponent: runType === 'POST_BREAKDOWN' ? component : null,
-      revision: 1,
-    };
-    await db().runs.put(record);
-    await appendAudit({
-      actor: user.username,
-      role: user.role,
-      action: 'CALIBRATION_RUN_EXECUTED',
-      entity: 'calibration_run',
-      entityId: record.id,
-      module: 'lab',
-      after: {
-        executionCode,
-        instrument: record.instrumentName,
-        overall: record.overallStatus,
-        policySource,
-        tests: result.results.length,
-        hash,
-      },
-      reason: t('تشغيل معايرة وفق البروتوكول المعتمد', 'Calibration execution per approved protocol'),
-    });
-    setSavedRun(record);
-    setConfirmOpen(false);
-    notify(
-      result.overall === 'PASS' ? 'success' : result.overall === 'FAIL' ? 'error' : 'warn',
-      t(`تم حفظ التشغيل — الحالة ${result.overall}`, `Run saved — ${result.overall}`),
-      executionCode,
-    );
+    setSaving(true);
+    setErrors([]);
+    try {
+      const created = await api.createRun({
+        instrument_id: instrument.id,
+        reference_equipment_id: refThermo || null,
+        run_type: runType,
+        ambient_temp_c: ambientTemp === '' ? null : Number(ambientTemp),
+        ambient_humidity: ambientHumidity === '' ? null : Number(ambientHumidity),
+        limit_source_policy: policySource,
+        breakdown_component: runType === 'POST_BREAKDOWN' ? component : null,
+      });
+
+      const scopedInputs: Record<string, Record<string, unknown>> = {};
+      for (const test of scopedTests) {
+        const raw = inputs[test.code] ?? {};
+        const cleaned: Record<string, unknown> = {};
+        for (const [key, value] of Object.entries(raw)) {
+          if (Array.isArray(value)) {
+            const nums = value.map((v) => (v === '' || v === null ? null : Number(v)));
+            if (nums.some((v) => v !== null && Number.isFinite(v))) cleaned[key] = nums.filter((v) => v !== null);
+          } else if (value !== '' && value !== undefined && value !== null) {
+            cleaned[key] = value;
+          }
+        }
+        scopedInputs[test.code] = cleaned;
+      }
+
+      const executed = await api.executeRun(created.id, scopedInputs);
+      setServerRun(executed.run);
+      setConfirmOpen(false);
+
+      // the server verdict may differ from the preview (it governs on stored limits)
+      const record: RunRecord = {
+        id: executed.run.id,
+        executionCode: executed.run.execution_code,
+        instrumentId: executed.run.instrument_id,
+        instrumentName: `${instrument.manufacturer} ${instrument.model}`,
+        protocolCode: 'SHIMADZU-LC2050C-UV-CAL',
+        runType: executed.run.run_type,
+        ambientTempC: Number(executed.run.ambient_temp_c ?? 0),
+        ambientHumidity: Number(executed.run.ambient_humidity ?? 0),
+        analyst: user.username,
+        reviewer: null,
+        qaApprover: null,
+        overallStatus: executed.overall,
+        results: toRunTestResults(executed.results),
+        startedAt: executed.run.started_at,
+        completedAt: executed.run.completed_at,
+        isLocked: executed.run.is_locked,
+        certificateHash: executed.run.certificate_hash,
+        breakdownComponent: executed.run.breakdown_component,
+        revision: executed.run.revision,
+      };
+      setSavedRun(record);
+      notify(
+        executed.overall === 'PASS' ? 'success' : executed.overall === 'FAIL' ? 'error' : 'warn',
+        t(`تم تسجيل التشغيل — الحالة ${executed.overall}`, `Run recorded — ${executed.overall}`),
+        `${record.executionCode} · ${executed.summary.pass}P / ${executed.summary.fail}F / ${executed.summary.review}R`,
+      );
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setErrors([error.text(lang)]);
+        notify('error', t('تعذر حفظ التشغيل', 'Run not saved'), error.code);
+      } else if (error instanceof OfflineError) {
+        setErrors([
+          t('الخادم غير متاح — لا يمكن حفظ تشغيل معايرة دون اتصال بقاعدة البيانات المركزية.', 'Server unreachable — a calibration run cannot be stored without the central database.'),
+        ]);
+      } else {
+        setErrors([(error as Error).message]);
+      }
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const exportJson = () => {
-    if (!result) return;
-    const blob = new Blob([JSON.stringify({ instrument, inputs, policySource, result }, null, 2)], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `SBDMA-run-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    void appendAudit({
-      actor: user?.username ?? 'unknown',
-      role: user?.role ?? 'VIEWER',
-      action: 'RUN_DATA_EXPORTED',
-      entity: 'calibration_run',
-      entityId: instrument?.id ?? '—',
-      module: 'lab',
-      reason: 'تصدير بيانات التشغيل للمراجعة الفنية',
-    });
+  /** Electronic signature for the technical review (21 CFR Part 11). */
+  const submitReviewSignature = async () => {
+    if (!serverRun) return;
+    setSigning(true);
+    try {
+      const reviewed = await api.reviewRun(serverRun.id, signaturePassword, signatureReason);
+      setServerRun(reviewed);
+      setSignatureOpen(false);
+      setSignaturePassword('');
+      notify('success', t('تم توقيع المراجعة الفنية', 'Technical review signed'), reviewed.execution_code);
+    } catch (error) {
+      notify(
+        'error',
+        t('تعذر توقيع المراجعة', 'Signature rejected'),
+        error instanceof ApiError ? error.text(lang) : String(error),
+      );
+    } finally {
+      setSigning(false);
+    }
+  };
+
+  /**
+   * Reports are produced by the server from stored rows, never from client state:
+   * the PDF is only issued for an approved + locked run and carries the stored
+   * certificate fingerprint; the XLSX exports raw inputs, verdicts, limits and the
+   * run's own audit trail.
+   */
+  const downloadReportFile = async (kind: 'certificate.pdf' | 'data.xlsx') => {
+    if (!serverRun) return;
+    try {
+      await downloadReport(`/reports/runs/${serverRun.id}/${kind}`, `${serverRun.execution_code}-${kind}`);
+      notify('success', t('تم توليد الملف', 'File generated'), kind);
+    } catch (error) {
+      notify(
+        'error',
+        t('تعذر توليد الملف', 'File could not be generated'),
+        error instanceof ApiError ? error.text(lang) : String(error),
+      );
+    }
   };
 
   if (loading) return <Skeleton rows={8} />;
@@ -411,6 +528,7 @@ export default function LabPage() {
                     {f.type === 'select' ? (
                       <select
                         className="select"
+                        data-field={`${activeSpec.code}.${f.key}`}
                         value={String(inputs[activeSpec.code]?.[f.key] ?? '')}
                         onChange={(e) => setField(activeSpec.code, f.key, e.target.value)}
                       >
@@ -427,6 +545,7 @@ export default function LabPage() {
                           <input
                             key={idx}
                             className="input mono"
+                            data-field={`${activeSpec.code}.${f.key}.${idx}`}
                             inputMode="decimal"
                             placeholder={f.hintAr?.split('،')[idx]?.trim() ?? `#${idx + 1}`}
                             value={seriesValue(activeSpec.code, f.key, idx)}
@@ -438,6 +557,7 @@ export default function LabPage() {
                     ) : (
                       <input
                         className="input mono"
+                        data-field={`${activeSpec.code}.${f.key}`}
                         inputMode={f.type === 'number' || f.type === 'integer' ? 'decimal' : 'text'}
                         step={f.step}
                         value={String(inputs[activeSpec.code]?.[f.key] ?? '')}
@@ -531,8 +651,21 @@ export default function LabPage() {
               <BadgeCheck size={12} /> {savedRun.executionCode}
             </span>
           )}
-          <button className="btn btn-ghost" onClick={exportJson} disabled={!result}>
-            <Download size={14} /> {t('تصدير JSON', 'Export JSON')}
+          <button
+            className="btn btn-ghost"
+            onClick={() => downloadReportFile('data.xlsx')}
+            disabled={!serverRun || !canExport}
+            title={t('تصدير بيانات التشغيل من الخادم إلى Excel', 'Export the stored run data to Excel')}
+          >
+            <Download size={14} /> {t('Excel', 'Excel')}
+          </button>
+          <button
+            className="btn btn-ghost"
+            onClick={() => downloadReportFile('certificate.pdf')}
+            disabled={!serverRun?.is_locked || !canExport}
+            title={t('الشهادة تُصدر فقط بعد الاعتماد النهائي', 'The certificate is issued only after QA approval')}
+          >
+            <Download size={14} /> {t('شهادة PDF', 'Certificate PDF')}
           </button>
           <button className="btn btn-primary" onClick={handleRun} disabled={running || !instrument}>
             <Play size={14} /> {running ? t('جارٍ الحساب…', 'Computing…') : t('Run Calibration', 'Run Calibration')}
@@ -573,7 +706,7 @@ export default function LabPage() {
             <button className="btn btn-ghost" onClick={() => setConfirmOpen(false)}>
               {t('إلغاء', 'Cancel')}
             </button>
-            <button className="btn btn-primary" onClick={persistRun} disabled={!canRun}>
+            <button className="btn btn-primary" onClick={persistRun} disabled={!canRun || saving}>
               <Save size={14} /> {t('حفظ وإرسال للمراجعة الفنية', 'Save & submit for review')}
             </button>
           </>

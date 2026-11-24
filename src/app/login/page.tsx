@@ -4,67 +4,56 @@ import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ArrowRight, Gauge, Languages, Lock, ShieldCheck, User } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
-import { appendAudit, db } from '@/core/db/database';
-import { ROLE_LABELS, type UserAccount } from '@/core/types';
+import { db } from '@/core/db/database';
+import { ROLE_LABELS } from '@/core/types';
 import { DEV_CREDIT_URL } from '@/core/constants';
 
 /**
- * Demo/local sign-in.
- * The production authentication path is Argon2id + JWT (HttpOnly, SameSite=Strict)
- * exposed by the FastAPI backend at POST /api/v1/auth/login. This screen binds the
- * browser-local identity used by the offline layer and never stores a password.
+ * Sign-in against POST /api/v1/auth/login.
+ *
+ * The password is verified with Argon2id on the server and never stored in the
+ * browser: the session lives in httpOnly cookies. The username list is only a
+ * convenience — any username may be typed, and the server answers uniformly for
+ * unknown accounts and wrong passwords so account existence is not disclosed.
  */
 export default function LoginPage() {
-  const { t, lang, setLang, setUser, notify } = useApp();
+  const { t, lang, setLang, signIn, notify, session, authError, working } = useApp();
   const router = useRouter();
-  const [users, setUsers] = useState<UserAccount[]>([]);
-  const [username, setUsername] = useState('analyst');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // remember the last successful username (never the password)
   useEffect(() => {
     void db()
-      .users.toArray()
-      .then((u) => {
-        setUsers(u);
-        if (u.length) setUsername(u[0].username);
+      .settings.get('lastUsername')
+      .then((row) => {
+        const last = row?.value;
+        if (typeof last === 'string' && last) setUsername(last);
       })
-      .catch(() => setUsers([]));
+      .catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (session) {
+      const role = session.roles[0] ?? 'VIEWER';
+      router.replace(role === 'QA_APPROVER' ? '/qa' : role === 'ENGINEERING_SERVICE' ? '/engineering' : '/');
+    }
+  }, [session, router]);
 
   const submit = async () => {
     setErr(null);
-    if (password.length < 4) {
-      setErr(t('كلمة المرور مطلوبة (4 أحرف على الأقل في بيئة العرض المحلية).', 'Password required (min 4 characters in the local demo environment).'));
+    if (!username.trim() || password.length === 0) {
+      setErr(t('أدخل اسم المستخدم وكلمة المرور.', 'Enter your username and password.'));
       return;
     }
-    setBusy(true);
     try {
-      const found = users.find((u) => u.username === username);
-      if (!found) {
-        setErr(t('المستخدم غير موجود.', 'User not found.'));
-        return;
-      }
-      if (!found.isActive) {
-        setErr(t('الحساب معطل — راجع مسؤول النظام.', 'Account disabled — contact the system administrator.'));
-        return;
-      }
-      await db().users.put({ ...found, lastLoginAt: new Date().toISOString() });
-      await appendAudit({
-        actor: found.username,
-        role: found.role,
-        action: 'LOGIN_SUCCESS',
-        entity: 'user',
-        entityId: found.id,
-        module: 'auth',
-        reason: 'دخول ناجح إلى النظام',
-      });
-      setUser(found);
-      notify('success', t('تم تسجيل الدخول', 'Signed in'), ROLE_LABELS[found.role][lang]);
-      router.push(found.role === 'QA_APPROVER' ? '/qa' : found.role === 'ENGINEERING_SERVICE' ? '/engineering' : '/');
-    } finally {
-      setBusy(false);
+      const account = await signIn(username.trim(), password);
+      setPassword('');
+      notify('success', t('تم تسجيل الدخول', 'Signed in'), ROLE_LABELS[account.role][lang]);
+      router.push(account.role === 'QA_APPROVER' ? '/qa' : account.role === 'ENGINEERING_SERVICE' ? '/engineering' : '/');
+    } catch {
+      setPassword('');
     }
   };
 
@@ -117,23 +106,26 @@ export default function LoginPage() {
             </button>
           </div>
 
-          <label className="label">{t('المستخدم', 'Username')}</label>
+          <label className="label" htmlFor="username">{t('المستخدم', 'Username')}</label>
           <div className="relative mb-3">
             <User size={14} className="absolute top-2.5 ltr:left-2.5 rtl:right-2.5" style={{ color: 'var(--text-muted)' }} />
-            <select className="select ps-8" value={username} onChange={(e) => setUsername(e.target.value)}>
-              {users.map((u) => (
-                <option key={u.id} value={u.username}>
-                  {u.username} — {ROLE_LABELS[u.role][lang]}
-                </option>
-              ))}
-            </select>
+            <input
+              id="username"
+              className="input ps-8 mono"
+              autoComplete="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              placeholder={t('اسم المستخدم', 'username')}
+            />
           </div>
 
-          <label className="label">{t('كلمة المرور', 'Password')}</label>
+          <label className="label" htmlFor="password">{t('كلمة المرور', 'Password')}</label>
           <div className="relative mb-4">
             <Lock size={14} className="absolute top-2.5 ltr:left-2.5 rtl:right-2.5" style={{ color: 'var(--text-muted)' }} />
             <input
+              id="password"
               type="password"
+              autoComplete="current-password"
               className="input ps-8 mono"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
@@ -142,20 +134,20 @@ export default function LoginPage() {
             />
           </div>
 
-          {err && (
-            <p className="mb-3 text-[11.5px] font-semibold" style={{ color: 'var(--fail)' }}>
-              {err}
+          {(err ?? authError) && (
+            <p className="mb-3 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ color: 'var(--fail)', background: 'rgba(180,35,24,.08)' }}>
+              {err ?? authError}
             </p>
           )}
 
-          <button className="btn btn-primary w-full justify-center" onClick={submit} disabled={busy}>
-            {busy ? t('جارٍ التحقق…', 'Verifying…') : t('دخول', 'Sign in')} <ArrowRight size={14} />
+          <button className="btn btn-primary w-full justify-center" onClick={submit} disabled={working}>
+            {working ? t('جارٍ التحقق…', 'Verifying…') : t('دخول', 'Sign in')} <ArrowRight size={14} />
           </button>
 
           <p className="mt-4 rounded-lg px-3 py-2 text-[10.5px] leading-relaxed" style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}>
             {t(
-              'بيئة العرض المحلية: أي كلمة مرور من 4 أحرف تعمل لربط هوية المستخدم بقاعدة البيانات المحلية. في بيئة الإنتاج تُتحقق كلمة المرور عبر Argon2id على الخادم مع JWT في كوكيز آمنة.',
-              'Local demo: any 4-character password binds the identity to the browser database. In production the password is verified with Argon2id on the server and JWT in secure cookies.',
+              'يُتحقق من كلمة المرور بـArgon2id على خادم المعايرة، وتُحفظ الجلسة في كوكيز httpOnly غير قابلة للقراءة من JavaScript. الحسابات المقفلة بعد 5 محاولات فاشلة تبقى مقفلة 15 دقيقة.',
+              'The password is verified with Argon2id on the calibration server and the session is stored in httpOnly cookies that JavaScript cannot read. Accounts lock for 15 minutes after 5 failed attempts.',
             )}
           </p>
         </div>

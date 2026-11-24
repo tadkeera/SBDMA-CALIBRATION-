@@ -1,12 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import {
   Activity,
   Beaker,
-  ClipboardCheck,
   Cog,
   FileBarChart2,
   Gauge,
@@ -17,13 +16,12 @@ import {
   ScrollText,
   ShieldCheck,
   Sun,
-  UserCog,
   Wrench,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
-import { db } from '@/core/db/database';
-import { ROLE_LABELS, type UserAccount } from '@/core/types';
+import { ROLE_LABELS } from '@/core/types';
 import { DEV_CREDIT_URL } from '@/core/constants';
+import { api, ApiError } from '@/core/api/client';
 
 const NAV = [
   { href: '/', ar: 'لوحة المؤشرات', en: 'Dashboard', icon: LayoutDashboard, perm: 'instruments.view' as const },
@@ -35,20 +33,40 @@ const NAV = [
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
-  const { t, user, setUser, lang, setLang, theme, setTheme, ready } = useApp();
+  const { t, user, session, can, signOut, lang, setLang, theme, setTheme, ready, working } = useApp();
   const path = usePathname();
-  const [users, setUsers] = useState<UserAccount[]>([]);
-  const [switchOpen, setSwitchOpen] = useState(false);
+  const router = useRouter();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [backend, setBackend] = useState<'checking' | 'up' | 'down'>('checking');
+
+  // the navigation is filtered by the permissions the server granted, not by a
+  // client-side role table
+  const allowed = NAV.filter((item) => can(item.perm));
+  const isLogin = path === '/login';
 
   useEffect(() => {
-    if (!ready) return;
-    void db()
-      .users.toArray()
-      .then(setUsers)
-      .catch(() => setUsers([]));
-  }, [ready]);
+    let cancelled = false;
+    const probe = async () => {
+      try {
+        await api.health();
+        if (!cancelled) setBackend('up');
+      } catch {
+        if (!cancelled) setBackend('down');
+      }
+    };
+    void probe();
+    const timer = setInterval(probe, 60_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, []);
 
-  const isLogin = path === '/login';
+  // an unauthenticated visitor never sees a protected page
+  useEffect(() => {
+    if (ready && !isLogin && !session) router.replace('/login');
+  }, [ready, isLogin, session, router]);
+
   if (isLogin) return <>{children}</>;
 
   return (
@@ -76,7 +94,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
 
           <nav className="mt-1 space-y-0.5 px-2">
-            {NAV.map((item) => {
+            {allowed.map((item) => {
               const active = path === item.href || (item.href !== '/' && path.startsWith(item.href));
               const Icon = item.icon;
               return (
@@ -152,18 +170,29 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2">
             <span
               className="chip hidden sm:inline-flex"
-              style={{ background: 'var(--brand-soft)', color: 'var(--brand)' }}
-              title={t('قاعدة البيانات المحلية في المتصفح متصلة', 'Browser-local database connected')}
+              style={
+                backend === 'up'
+                  ? { background: 'rgba(22,121,79,.12)', color: 'var(--pass)' }
+                  : backend === 'down'
+                    ? { background: 'rgba(180,35,24,.12)', color: 'var(--fail)' }
+                    : { background: 'var(--surface-3)', color: 'var(--text-muted)' }
+              }
+              title={t('حالة خادم المعايرة (فحص كل دقيقة)', 'Calibration server status (probed every minute)')}
             >
-              <Activity size={11} /> {t('IndexedDB متصلة', 'IndexedDB online')}
+              <Activity size={11} />
+              {backend === 'up'
+                ? t('الخادم متاح', 'Server online')
+                : backend === 'down'
+                  ? t('الخادم غير متاح', 'Server offline')
+                  : t('جارٍ الفحص', 'Checking')}
             </span>
 
             <div className="relative">
               <button
                 className="btn btn-ghost gap-2 px-2 py-1.5"
-                onClick={() => setSwitchOpen((v) => !v)}
+                onClick={() => setMenuOpen((v) => !v)}
                 aria-haspopup="menu"
-                aria-expanded={switchOpen}
+                aria-expanded={menuOpen}
               >
                 <span
                   className="flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold"
@@ -175,51 +204,46 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   {user ? (lang === 'ar' ? user.fullNameAr : user.fullNameEn) : '—'}
                 </span>
               </button>
-              {switchOpen && (
+              {menuOpen && (
                 <div
-                  className="card absolute z-40 mt-1 w-[280px] p-1.5 ltr:right-0 rtl:left-0"
+                  className="card absolute z-40 mt-1 w-[286px] p-1.5 ltr:right-0 rtl:left-0"
                   role="menu"
                   style={{ boxShadow: '0 12px 32px rgba(16,24,40,.16)' }}
                 >
-                  <p className="px-2 py-1 text-[10.5px] font-bold" style={{ color: 'var(--text-muted)' }}>
-                    {t('تبديل هوية المستخدم (لتجربة الأدوار والصلاحيات)', 'Switch user identity (role testing)')}
-                  </p>
-                  {users.map((u) => (
-                    <button
-                      key={u.id}
-                      onClick={() => {
-                        setUser(u);
-                        setSwitchOpen(false);
-                      }}
-                      className="flex w-full items-center justify-between gap-2 rounded-md px-2 py-1.5 text-start hover:bg-[var(--surface-3)]"
-                      role="menuitem"
-                    >
-                      <span className="min-w-0">
-                        <span className="block truncate text-[11.5px] font-semibold">
-                          {lang === 'ar' ? u.fullNameAr : u.fullNameEn}
-                        </span>
-                        <span className="block text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          {ROLE_LABELS[u.role][lang]} · {u.departmentCode}
-                        </span>
-                      </span>
-                      {user?.id === u.id && <ClipboardCheck size={13} style={{ color: 'var(--brand)' }} />}
-                    </button>
-                  ))}
+                  <div className="px-2 py-1.5">
+                    <p className="text-[11.5px] font-bold">
+                      {user ? (lang === 'ar' ? user.fullNameAr : user.fullNameEn) : '—'}
+                    </p>
+                    <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      {user ? ROLE_LABELS[user.role][lang] : ''} · {user?.departmentCode ?? '—'}
+                    </p>
+                    <p className="mt-1 font-mono text-[9.5px]" style={{ color: 'var(--text-muted)' }}>
+                      {session?.email ?? ''}
+                    </p>
+                  </div>
                   <div className="my-1 border-t" style={{ borderColor: 'var(--border)' }} />
-                  <Link
-                    href="/login"
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[11.5px] font-semibold"
-                    onClick={() => setSwitchOpen(false)}
+                  <p className="px-2 py-1 text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>
+                    {t('الصلاحيات الممنوحة من الخادم', 'Permissions granted by the server')} (
+                    {(session?.permissions ?? []).length})
+                  </p>
+                  <div className="max-h-[130px] overflow-y-auto px-2 pb-1">
+                    <p className="font-mono text-[9.5px] leading-relaxed" style={{ color: 'var(--text-muted)', direction: 'ltr' }}>
+                      {(session?.permissions ?? []).join(' · ') || '—'}
+                    </p>
+                  </div>
+                  <div className="my-1 border-t" style={{ borderColor: 'var(--border)' }} />
+                  <button
+                    onClick={async () => {
+                      setMenuOpen(false);
+                      await signOut();
+                      router.replace('/login');
+                    }}
+                    disabled={working}
+                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-start text-[11.5px] font-semibold"
+                    role="menuitem"
                   >
-                    <LogOut size={13} /> {t('شاشة الدخول / تغيير الحساب', 'Sign-in screen')}
-                  </Link>
-                  <Link
-                    href="/control"
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 text-[11.5px] font-semibold"
-                    onClick={() => setSwitchOpen(false)}
-                  >
-                    <UserCog size={13} /> {t('إدارة المستخدمين', 'User administration')}
-                  </Link>
+                    <LogOut size={13} /> {t('تسجيل الخروج', 'Sign out')}
+                  </button>
                 </div>
               )}
             </div>
@@ -231,7 +255,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <footer className="mt-4 border-t px-4 py-3 text-center text-[10.5px]" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
           <span className="inline-flex items-center gap-1.5">
             <FileBarChart2 size={11} />
-            {t('نظام إدارة ومعايرة الأجهزة المخبرية — الإصدار 1.0.0', 'Laboratory Calibration & OQ Platform — v1.0.0')}
+            {t('نظام إدارة ومعايرة الأجهزة المخبرية — الإصدار 1.1.0', 'Laboratory Calibration & OQ Platform — v1.1.0')}
             <span aria-hidden>·</span>
             {t('تطوير: ', 'Developed by: ')}
             <a href={DEV_CREDIT_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)', fontWeight: 700 }}>

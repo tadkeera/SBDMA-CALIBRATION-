@@ -598,3 +598,40 @@ async def _login(client, username: str) -> dict:
     from tests.conftest import login
 
     return await login(client, username)
+
+
+async def test_run_detail_returns_the_raw_inputs_that_were_signed(
+    client, analyst, instrument_id, admin_session
+):
+    """ALCOA+ (Original): the laboratory must be able to replay a signed run.
+
+    `GET /runs/{id}` has to expose the inputs exactly as captured, otherwise the
+    charts and any re-evaluation would have to guess them.
+    """
+    ref_id = await _reference_id(client, admin_session)
+    created = await _create(client, analyst, instrument_id, reference_equipment_id=ref_id)
+    run_id = created.json()["data"]["id"]
+    executed = await client.post(
+        f"/api/v1/runs/{run_id}/execute",
+        headers=analyst["hash"],
+        json={"raw_inputs": COMPLIANT_INPUTS},
+    )
+    assert executed.status_code == 200, executed.text
+
+    detail = await client.get(f"/api/v1/runs/{run_id}", headers=admin_session["hash"])
+    assert detail.status_code == 200, detail.text
+    results = detail.json()["data"]["results"]
+    assert len(results) == 13
+
+    by_code = {r["test_code"]: r for r in results}
+    for code, captured in COMPLIANT_INPUTS.items():
+        stored = by_code[code]["raw_inputs"]
+        # the stored JSONB must round-trip every key that was signed for
+        for key, value in captured.items():
+            assert stored[key] == value, f"{code}.{key} not preserved: {stored.get(key)!r}"
+    # every numeric test keeps its evaluations; T13 is the binary sensor matrix
+    # (HPV/LPV/pump/rack/port/detector) and by protocol design has no metrics
+    assert by_code["T13"]["metric_evaluations"] == []
+    for code, result in by_code.items():
+        if code != "T13":
+            assert result["metric_evaluations"], f"{code} lost its metric evaluations"

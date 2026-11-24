@@ -15,6 +15,8 @@ import {
 import { useApp } from '@/components/AppProvider';
 import { Card, EmptyState, Metric, Skeleton, StatusChip } from '@/components/ui';
 import { db } from '@/core/db/database';
+import { api, toInstrument, type ServerKpis } from '@/core/api/client';
+import { SOURCE_LABEL } from '@/core/api/mode';
 import { BREAKDOWN_MATRIX, TESTS } from '@/core/protocol';
 import type { Instrument, MaintenanceTicket, ReferenceEquipment, RunRecord } from '@/core/types';
 
@@ -23,30 +25,144 @@ const daysBetween = (a: string, b = new Date()) =>
   Math.round((new Date(a).getTime() - new Date(b).toISOString().slice(0, 10).length ? new Date(a).getTime() - b.getTime() : 0) / DAY);
 
 export default function DashboardPage() {
-  const { t, lang, ready } = useApp();
+  const { t, lang, ready, readThrough, source, setSource } = useApp();
   const [loading, setLoading] = useState(true);
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [refEq, setRefEq] = useState<ReferenceEquipment[]>([]);
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
+  const [serverKpis, setServerKpis] = useState<ServerKpis | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!ready) return;
     (async () => {
-      const d = db();
-      const [i, r, e, tk] = await Promise.all([
-        d.instruments.toArray(),
-        d.runs.toArray(),
-        d.referenceEquipment.toArray(),
-        d.tickets.toArray(),
-      ]);
-      setInstruments(i);
-      setRuns(r);
-      setRefEq(e);
-      setTickets(tk);
-      setLoading(false);
+      try {
+        // The KPI numbers come from GET /kpis (computed in SQL over real rows).
+        // The lists below are used for the due-date table and the ledger.
+        const [kpis, instrumentsResult, runsResult] = await Promise.all([
+          readThrough(
+            () => api.kpis(),
+            async () => {
+              const cached = await db().settings.get('kpis');
+              return (cached?.value as ServerKpis) ?? null;
+            },
+          ),
+          readThrough(
+            () => api.instruments(),
+            async () =>
+              (await db().instruments.toArray()).map((c) => ({
+                id: c.id,
+                department_id: c.departmentCode,
+                asset_code: c.assetCode,
+                category: c.category,
+                manufacturer: c.manufacturer,
+                model: c.model,
+                part_number: c.partNumber,
+                serial_number: c.serialNumber,
+                software_version: c.softwareVersion,
+                calibration_freq_days: c.calibrationFreqDays,
+                last_calibration_date: c.lastCalibrationDate,
+                next_due_date: c.nextDueDate,
+                status: c.status,
+                d2_lamp_hours: c.d2LampHours,
+              })),
+          ),
+          readThrough(
+            () => api.runs({ page_size: 100 }),
+            async () => [],
+          ),
+        ]);
+
+        setSource(instrumentsResult.source);
+        setServerKpis(kpis.data);
+        if (kpis.source.source === 'server') {
+          await db().settings.put({
+            key: 'kpis',
+            value: kpis.data,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+        setInstruments(instrumentsResult.data.map((row) => toInstrument(row)));
+        setRuns(
+          runsResult.data.map((row) => ({
+            id: row.id,
+            executionCode: row.execution_code,
+            instrumentId: row.instrument_id,
+            instrumentName: row.instrument_id,
+            protocolCode: 'SHIMADZU-LC2050C-UV-CAL',
+            runType: row.run_type,
+            ambientTempC: 0,
+            ambientHumidity: 0,
+            analyst: row.analyst_id,
+            reviewer: null,
+            qaApprover: row.is_locked ? row.analyst_id : null,
+            overallStatus: row.overall_status,
+            results: [],
+            startedAt: row.started_at,
+            completedAt: row.completed_at,
+            isLocked: row.is_locked,
+            certificateHash: null,
+            revision: 1,
+          })),
+        );
+        try {
+          const [refs, tk] = await Promise.all([
+            readThrough(
+              () => api.referenceEquipment(),
+              async () => [],
+            ),
+            readThrough(
+              () => api.tickets(),
+              async () => [],
+            ),
+          ]);
+          setRefEq(
+            refs.data.map((r) => ({
+              id: r.id,
+              departmentCode: '—',
+              code: r.equipment_code,
+              nameAr: r.name_ar,
+              nameEn: r.name_en,
+              serialNumber: r.serial_number,
+              certificateNo: r.certificate_no,
+              calibratedBy: r.calibrated_by,
+              calibrationDate: r.calibration_date,
+              expiryDate: r.expiry_date,
+              isActive: r.is_active,
+            })),
+          );
+          setTickets(
+            tk.data.map((x) => ({
+              id: x.id,
+              instrumentId: x.instrument_id,
+              instrumentName: x.instrument_id,
+              component: x.component_affected as MaintenanceTicket['component'],
+              componentAr: x.component_affected,
+              description: x.description,
+              requiredTests: x.required_tests,
+              status: x.status as MaintenanceTicket['status'],
+              reportedBy: '',
+              reportedAt: '',
+            })),
+          );
+        } catch {
+          /* secondary panels degrade to their empty state */
+        }
+        setLoadError(null);
+      } catch (error) {
+        setLoadError(
+          t(
+            'تعذر تحميل المؤشرات من الخادم — تُعرض البيانات المتاحة فقط.',
+            'KPIs could not be loaded from the server — showing only what is available.',
+          ),
+        );
+        void error;
+      } finally {
+        setLoading(false);
+      }
     })();
-  }, [ready]);
+  }, [ready, readThrough, setSource, t]);
 
   const kpi = useMemo(() => {
     const today = new Date();
@@ -93,6 +209,26 @@ export default function DashboardPage() {
       total: instruments.length,
     };
   }, [instruments, runs, refEq, tickets]);
+
+  /** Server-computed KPIs win over the client recomputation above. */
+  const shown = useMemo(() => {
+    if (!serverKpis) return kpi;
+    return {
+      ...kpi,
+      calibrated: serverKpis.instruments.in_calibration,
+      total: serverKpis.instruments.total,
+      dueSoon: serverKpis.instruments.due_within_30_days,
+      overdue: serverKpis.instruments.overdue,
+      completed: serverKpis.runs.completed,
+      passRate: serverKpis.runs.pass_rate_percent === null ? null : Math.round(serverKpis.runs.pass_rate_percent),
+      pending: serverKpis.runs.pending_qa_approval,
+      avgApprovalDays:
+        serverKpis.runs.mean_approval_days === null ? '—' : String(serverKpis.runs.mean_approval_days),
+      expiredRef: serverKpis.compliance.expired_reference_equipment,
+      expiringRef: serverKpis.compliance.expired_reference_standards,
+      openTickets: serverKpis.compliance.open_maintenance_tickets,
+    };
+  }, [kpi, serverKpis]);
 
   const dueList = useMemo(() => {
     const today = new Date();
@@ -159,54 +295,54 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Metric
           label={t('أجهزة معايرة سارية', 'Instruments in calibration')}
-          value={`${kpi.calibrated} / ${kpi.total}`}
+          value={`${shown.calibrated} / ${shown.total}`}
           hint={t('محسوبة من تواريخ الاستحقاق الفعلية', 'Computed from actual due dates')}
           tone="pass"
         />
         <Metric
           label={t('مستحقة خلال 30 يوماً', 'Due within 30 days')}
-          value={kpi.dueSoon}
+          value={shown.dueSoon}
           hint={t('تنبيهات 30/15/7 أيام', '30/15/7-day alerts')}
-          tone={kpi.dueSoon ? 'warn' : 'neutral'}
+          tone={shown.dueSoon ? 'warn' : 'neutral'}
         />
         <Metric
           label={t('أجهزة متأخرة الاستحقاق', 'Overdue instruments')}
-          value={kpi.overdue}
+          value={shown.overdue}
           hint={t('تتطلب إيقافاً تشغيلياً', 'Requires operational hold')}
-          tone={kpi.overdue ? 'fail' : 'neutral'}
+          tone={shown.overdue ? 'fail' : 'neutral'}
         />
         <Metric
           label={t('معدل نجاح التشغيلات', 'Run pass rate')}
-          value={kpi.passRate === null ? '—' : `${kpi.passRate}%`}
+          value={shown.passRate === null ? '—' : `${shown.passRate}%`}
           hint={
             hasRuns
-              ? t(`${kpi.completed} تشغيل مكتمل`, `${kpi.completed} completed runs`)
+              ? t(`${shown.completed} تشغيل مكتمل`, `${shown.completed} completed runs`)
               : t('لا توجد تشغيلات بعد', 'No runs yet')
           }
-          tone={kpi.passRate === null ? 'neutral' : kpi.passRate >= 90 ? 'pass' : kpi.passRate >= 70 ? 'warn' : 'fail'}
+          tone={shown.passRate === null ? 'neutral' : shown.passRate >= 90 ? 'pass' : shown.passRate >= 70 ? 'warn' : 'fail'}
         />
         <Metric
           label={t('قيد الاعتماد من QA', 'Awaiting QA approval')}
-          value={kpi.pending}
+          value={shown.pending}
           hint={t('فصل المهام مُطبَّق على الخادم', 'Segregation of duties enforced')}
-          tone={kpi.pending ? 'warn' : 'neutral'}
+          tone={shown.pending ? 'warn' : 'neutral'}
         />
         <Metric
           label={t('متوسط زمن الاعتماد', 'Mean approval lead time')}
-          value={kpi.avgApprovalDays === '—' ? '—' : `${kpi.avgApprovalDays} ${t('يوم', 'd')}`}
+          value={shown.avgApprovalDays === '—' ? '—' : `${shown.avgApprovalDays} ${t('يوم', 'd')}`}
           hint={t('من بدء التشغيل إلى اعتماد QA', 'Start of run → QA sign-off')}
         />
         <Metric
           label={t('أدوات مرجعية منتهية', 'Expired reference items')}
-          value={kpi.expiredRef}
-          hint={t(`${kpi.expiringRef} تنتهي خلال 30 يوماً`, `${kpi.expiringRef} expiring in 30 days`)}
-          tone={kpi.expiredRef ? 'fail' : 'neutral'}
+          value={shown.expiredRef}
+          hint={t(`${shown.expiringRef} تنتهي خلال 30 يوماً`, `${shown.expiringRef} expiring in 30 days`)}
+          tone={shown.expiredRef ? 'fail' : 'neutral'}
         />
         <Metric
           label={t('تذاكر صيانة مفتوحة', 'Open maintenance tickets')}
-          value={kpi.openTickets}
+          value={shown.openTickets}
           hint={t('تربط بمصفوفة ما بعد الأعطال', 'Linked to post-breakdown matrix')}
-          tone={kpi.openTickets ? 'warn' : 'neutral'}
+          tone={shown.openTickets ? 'warn' : 'neutral'}
         />
       </div>
 

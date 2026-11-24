@@ -45,13 +45,24 @@ backend/
 | فصل المهام | `assert_segregation_of_duties` | 403 `SEGREGATION_OF_DUTIES` |
 | عزل الأقسام | `Principal.assert_department` | 404 لا 403 (بلا تسريب وجود) |
 
-## الخطوة التالية (المرحلة B)
+## المرحلة B — ما أُنجز فعلياً
 
-1. **الربط الفعلي مع الواجهة:** استبدال طبقة IndexedDB في `src/core/db` بعميل HTTP
-   (`fetch` مع `credentials: 'include'`) مع إبقاء الواجهة تعمل دون اتصال (تخزين مؤقت للقراءة فقط).
-   **لا حذف للبيانات المحلية الموجودة** — تُستخدم كنسخة قراءة فقط عند انقطاع الشبكة.
-2. **التقارير:** `/runs/{id}/certificate.pdf` (ReportLab + QR) و`/runs/{id}/export.xlsx` (openpyxl)
-   مع نفس بصمة الشهادة المخزنة في القاعدة.
+1. ~~**الربط الفعلي مع الواجهة**~~ ✅ — الواجهة لم تعد تقرأ من IndexedDB كمصدر حقيقة:
+   - `src/core/api/client.ts`: عميل HTTP مطبوع الأنواع (`fetch` مع `credentials: 'include'`)،
+     فكّ مغلّف `{success,data,meta,errors}`، تجديد جلسة أحادي (single-flight) عند 401،
+     وتصنيف أخطاء (`ApiError` / `OfflineError`).
+   - `src/core/api/mode.ts`: `DATA_MODE` و`SourceStamp` — كل بطاقة تُصرّح بمصدر بياناتها.
+   - تسجيل الدخول صار من الخادم فقط؛ أُزيل تبديل الهوية من الواجهة نهائياً،
+     والصلاحيات تُقرأ من `session.permissions` لا من عميل المتصفح.
+   - `readThrough()`: يقرأ من الخادم، وعند الانقطاع يعود لنسخة **قراءة فقط** من الكاش المحلي.
+     لا كتابة ولا حكم PASS من بيانات محلية.
+   - `next.config.js`: تمرير `/api/v1/*` إلى `API_ORIGIN` حتى يبقى المتصفح على نفس الأصل (لا CORS في المتصفح، ولا `127.0.0.1` في كود الواجهة).
+2. ~~**التقارير**~~ ✅ — `certificate.pdf` (ReportLab + QR) و`data.xlsx` و`register.xlsx` و`audit.xlsx` (openpyxl).
+   الشهادة تُصدر فقط لتشغيل PASS معتمد ومقفل وموقَّع، والبصمة المطبوعة = `certificate_hash` المخزن،
+   وQR يحمل `SBDMA|<run_code>|<hash>`. كل تنزيل يُسجَّل في سلسلة التدقيق.
+   أُضيف كذلك `raw_inputs` إلى `GET /runs/{id}` حتى تُعاد البيانات الموقّعة كما هي (ALCOA+: Original).
+## الخطوات المتبقية (لم تُنفَّذ بعد)
+
 3. **المرفقات:** `POST /instruments/{id}/attachments` + تحقق SHA-256 + حد 25MB + `trg` يمنع الحذف.
 4. **إدارة المستخدمين:** `/users` (إنشاء/تعطيل/إعادة تعيين كلمة المرور) بصلاحية `users.manage`
    مع منع تصعيد الصلاحيات (موجود في `Principal` ولم يُفتح بعد على مسار HTTP).

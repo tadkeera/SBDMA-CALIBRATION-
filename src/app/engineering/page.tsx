@@ -5,12 +5,13 @@ import Link from 'next/link';
 import { CheckCircle2, PlusCircle, Wrench } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { Card, EmptyState, Field, Metric, Modal, Skeleton, StatusChip, Toolbar } from '@/components/ui';
-import { appendAudit, db } from '@/core/db/database';
+import { db } from '@/core/db/database';
+import { ApiError, api, toInstrument, type ServerInstrument } from '@/core/api/client';
 import { BREAKDOWN_MATRIX, TESTS, testsForComponent } from '@/core/protocol';
-import { ROLE_PERMISSIONS, type Instrument, type MaintenanceTicket } from '@/core/types';
+import { type Instrument, type MaintenanceTicket } from '@/core/types';
 
 export default function EngineeringPage() {
-  const { t, lang, ready, user, notify } = useApp();
+  const { t, lang, ready, user, notify, can, readThrough, setSource } = useApp();
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [tickets, setTickets] = useState<MaintenanceTicket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -20,13 +21,73 @@ export default function EngineeringPage() {
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const canManage = user ? ROLE_PERMISSIONS[user.role].includes('maintenance.manage') : false;
+  const canManage = can('maintenance.manage');
 
   const load = async () => {
-    const d = db();
-    setInstruments(await d.instruments.toArray());
-    setTickets(await d.tickets.toArray());
-    setLoading(false);
+    try {
+      const [inst, tk] = await Promise.all([
+        readThrough(
+          () => api.instruments(),
+          async () =>
+            (await db().instruments.toArray()).map(
+              (c): ServerInstrument => ({
+                id: c.id,
+                department_id: c.departmentCode,
+                asset_code: c.assetCode,
+                category: c.category,
+                manufacturer: c.manufacturer,
+                model: c.model,
+                part_number: c.partNumber,
+                serial_number: c.serialNumber,
+                software_version: c.softwareVersion,
+                calibration_freq_days: c.calibrationFreqDays,
+                last_calibration_date: c.lastCalibrationDate,
+                next_due_date: c.nextDueDate,
+                status: c.status,
+                d2_lamp_hours: c.d2LampHours,
+              }),
+            ),
+        ),
+        readThrough(
+          () => api.tickets(),
+          async () =>
+            (await db().tickets.toArray()).map((t) => ({
+              id: t.id,
+              instrument_id: t.instrumentId,
+              component_affected: t.component,
+              description: t.description,
+              required_tests: t.requiredTests,
+              status: t.status,
+              resolved_at: t.resolvedAt ?? null,
+            })),
+        ),
+      ]);
+      setSource(inst.source);
+      const mapped = inst.data.map((row) => toInstrument(row));
+      setInstruments(mapped);
+      setTickets(
+        tk.data.map((x) => {
+          const inst2 = mapped.find((i) => i.id === x.instrument_id);
+          const comp = BREAKDOWN_MATRIX.find((b) => b.key === x.component_affected);
+          return {
+            id: x.id,
+            instrumentId: x.instrument_id,
+            instrumentName: inst2 ? `${inst2.manufacturer} ${inst2.model}` : x.instrument_id,
+            component: x.component_affected as MaintenanceTicket['component'],
+            componentAr: comp?.ar ?? x.component_affected,
+            description: x.description,
+            requiredTests: x.required_tests,
+            status: x.status as MaintenanceTicket['status'],
+            reportedBy: '',
+            reportedAt: x.status === 'RESOLVED' ? (x.resolved_at ?? '') : '',
+          };
+        }),
+      );
+    } catch (error) {
+      notify('error', t('تعذر تحميل بيانات الصيانة', 'Maintenance data could not be loaded'), error instanceof ApiError ? error.text(lang) : String(error));
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -43,49 +104,21 @@ export default function EngineeringPage() {
     }
     setBusy(true);
     try {
-      const inst = instruments.find((i) => i.id === instrumentId)!;
-      const comp = BREAKDOWN_MATRIX.find((b) => b.key === component)!;
-      const ticket: MaintenanceTicket = {
-        id: `tk-${Date.now()}`,
-        instrumentId,
-        instrumentName: `${inst.manufacturer} ${inst.model}`,
-        component,
-        componentAr: comp.ar,
-        description: description.trim(),
-        requiredTests,
-        status: 'OPEN',
-        reportedBy: user?.username ?? 'unknown',
-        reportedAt: new Date().toISOString(),
-      };
-      await db().tickets.put(ticket);
-      await db().instruments.put({ ...inst, status: 'UNDER_MAINTENANCE' });
-      await appendAudit({
-        actor: user?.username ?? 'unknown',
-        role: user?.role ?? 'VIEWER',
-        action: 'MAINTENANCE_TICKET_OPENED',
-        entity: 'maintenance_ticket',
-        entityId: ticket.id,
-        module: 'engineering',
-        after: ticket,
-        reason: description.trim(),
-      });
-      // predictive alert for D2 lamp life
-      if (component === 'D2_LAMP') {
-        await appendAudit({
-          actor: 'SYSTEM',
-          role: 'SYSTEM_ADMIN',
-          action: 'ALERT_D2_LAMP_REPLACED',
-          entity: 'instrument',
-          entityId: instrumentId,
-          module: 'engineering',
-          after: { lampHours: inst.d2LampHours },
-          reason: 'استبدال لمبة الديوتيريوم — يجب تصفير عدّاد الساعات وإعادة اختبار T09 وT11',
-        });
-      }
-      notify('success', t('تم فتح تذكرة صيانة', 'Maintenance ticket opened'), ticket.id);
+      const ticket = await api.createTicket(instrumentId, component, description.trim());
+      notify(
+        'success',
+        t('تم فتح تذكرة صيانة', 'Maintenance ticket opened'),
+        `${ticket.id.slice(0, 8)} · ${ticket.required_tests.join(' / ')}`,
+      );
       setOpen(false);
       setDescription('');
       await load();
+    } catch (error) {
+      notify(
+        'error',
+        t('تعذر فتح التذكرة', 'Ticket could not be opened'),
+        error instanceof ApiError ? error.text(lang) : String(error),
+      );
     } finally {
       setBusy(false);
     }
@@ -94,28 +127,15 @@ export default function EngineeringPage() {
   const closeTicket = async (ticket: MaintenanceTicket) => {
     setBusy(true);
     try {
-      const updated: MaintenanceTicket = {
-        ...ticket,
-        status: 'RESOLVED',
-        resolvedBy: user?.username ?? null,
-        resolvedAt: new Date().toISOString(),
-      };
-      await db().tickets.put(updated);
-      const inst = instruments.find((i) => i.id === ticket.instrumentId);
-      if (inst) await db().instruments.put({ ...inst, status: 'ACTIVE' });
-      await appendAudit({
-        actor: user?.username ?? 'unknown',
-        role: user?.role ?? 'VIEWER',
-        action: 'MAINTENANCE_TICKET_RESOLVED',
-        entity: 'maintenance_ticket',
-        entityId: ticket.id,
-        module: 'engineering',
-        before: { status: ticket.status },
-        after: { status: 'RESOLVED', resolvedBy: user?.username },
-        reason: 'إغلاق التذكرة بعد تنفيذ الصيانة وإعادة الجهاز للخدمة',
-      });
-      notify('success', t('تم إنجاز التذكرة', 'Ticket resolved'), t('الاختبارات الإلزامية يجب أن تُنفَّذ قبل إعادة الجهاز للعمل.', 'Mandatory retests must be executed before returning the instrument to service.'));
+      await api.resolveTicket(ticket.id);
+      notify('success', t('تم إنجاز التذكرة', 'Ticket resolved'), t('أُعيد الجهاز إلى الخدمة ويجب تنفيذ اختبارات ما بعد الأعطال.', 'The instrument is back in service; the post-breakdown retests are now due.'));
       await load();
+    } catch (error) {
+      notify(
+        'error',
+        t('تعذر إنجاز التذكرة', 'Ticket could not be resolved'),
+        error instanceof ApiError ? error.text(lang) : String(error),
+      );
     } finally {
       setBusy(false);
     }

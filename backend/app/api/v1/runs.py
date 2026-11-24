@@ -46,6 +46,9 @@ def _serialise_run(run) -> RunOut:  # noqa: ANN001
                 "metric_evaluations": r.metric_evaluations_jsonb or [],
                 "notes_ar": r.notes_ar,
                 "outputs": r.calculated_outputs_jsonb or {},
+                # stored verbatim at execution time; the laboratory charts and any
+                # re-evaluation must read the same numbers that were signed for.
+                "raw_inputs": r.raw_inputs_jsonb or {},
             }
             for r in sorted(run.results, key=lambda x: x.test_code)
         ],

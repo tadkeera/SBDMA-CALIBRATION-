@@ -25,7 +25,7 @@ Incubators, Stability Chambers).
 | الرسوم العلمية | Apache ECharts (انحدار OLS، بواقي، GPV، أطياف، مخططات تحكم) |
 | محرك الحسابات (المتصفح) | AST Parser آمن + `decimal.js` — **بدون `eval()`** |
 | محرك الحسابات (الخادم) | Python 3.12 · `decimal.Decimal` · AST مُتحقق منه — **بدون `eval()`** |
-| خادم الإنتاج | FastAPI 0.165 (Async) · 27 مساراً في `/api/v1` · Argon2id + JWT · حد طلبات |
+| خادم الإنتاج | FastAPI 0.165 (Async) · 31 مساراً في `/api/v1` · Argon2id + JWT · حد طلبات · تقارير PDF/Excel |
 | طبقة الحوكمة في القاعدة | 17 Trigger: تدقيق ملحق فقط، قفل النتائج، قفل التشغيل، حاجز الانتهاء، `updated_at` |
 | الطوابير والكاش | Redis 7 · Celery Worker/Beat |
 | البنية التحتية | Docker Compose · Kubernetes (HPA + PDB + Rolling Updates) · Nginx |
@@ -138,7 +138,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 - التوثيق التفاعلي: `http://localhost:8000/api/docs`
 - فحص الجاهزية الحقيقي (يتصل بـ PostgreSQL فعلاً): `GET /api/v1/health/ready`
-- الاختبارات: `cd backend && pytest -q` → **80 ناجحاً** على قاعدة `sbdma_test` حقيقية تُبنى بالترحيلات.
+- الاختبارات: `cd backend && pytest -q` → **91 ناجحاً** على قاعدة `sbdma_test` حقيقية تُبنى بالترحيلات.
 
 > **ملاحظة أمنية:** الحسابات المزروعة تحمل `must_change_password=true`، وكل من طلب
 > `change-password` يُبطل جميع جلساته القائمة.
@@ -147,9 +147,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 | الحزمة | العدد | النتيجة | الأمر |
 |---|---|---|---|
-| محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npm test` |
-| محرك الحسابات + API + الحوكمة (Python/PostgreSQL) | 80 | ✅ ناجحة | `cd backend && pytest` |
-| التدفق الكامل E2E (Playwright) | 1 سيناريو | ✅ 13/13 اختبار مطابق | `node e2e.js` (خارج الحزمة) |
+| محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npx vitest run` |
+| طبقة التكيّف مع الخادم (TypeScript) | 15 | ✅ ناجحة | `npx vitest run` |
+| محرك الحسابات + API + الحوكمة + التقارير (Python/PostgreSQL) | 91 | ✅ ناجحة | `cd backend && pytest` |
+| الجولة الكاملة في متصفح حقيقي (Playwright/Chromium) | 1 سيناريو | ✅ دخول ← تشغيل ← مراجعة ← اعتماد ← تنزيل الشهادة | `python3 sbdma-platform/e2e_live.py` |
 
 التغطية تشمل: أولويات العمليات، صيغ التدفق والتدرج والحقن الوزني، OLS، `%RSD`، الحساسية
 النسبية، الترحيل، رفض التعبيرات الخطرة (`__import__`, `eval`, `open`, `;`, comprehensions)،
@@ -159,9 +160,15 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## الخادم الخلفي
 
-**منفَّذ ويعمل فعلياً** (المرحلة A): 21 جدولاً + 17 Trigger حوكمة، 27 مسار REST،
+**منفَّذ ويعمل فعلياً** (المرحلتان A وB): 21 جدولاً + 17 Trigger حوكمة، 31 مسار REST،
 Argon2id + JWT بتدوير رموز، توقيع إلكتروني، فصل مهام، عزل أقسام، وSeeders حتمية
-من البروتوكول نفسه (108 حدود). التفاصيل: [`docs/backend-roadmap.md`](docs/backend-roadmap.md)
+من البروتوكول نفسه (108 حدود)، وشهادات PDF وملفات Excel مُدقَّقة التنزيل.
+
+**الواجهة لم تعد تعمل على بيانات محلية:** كل بطاقة تقرأ من `/api/v1` عبر عميل مطبوع الأنواع،
+والصلاحيات تأتي من جلسة الخادم لا من المتصفح. عند انقطاع الشبكة تُعرض نسخة **قراءة فقط**
+من الكاش مع وسم مصدرها — ولا يمكن إنتاج حكم `PASS` من بيانات محلية.
+
+التفاصيل: [`docs/backend-roadmap.md`](docs/backend-roadmap.md)
 · [`docs/api.md`](docs/api.md) · [`docs/testing.md`](docs/testing.md).
 
 **أهم ما يُميّز الطبقة الخلفية:** الحواجز الحاسمة لا تعيش في Python وحده، بل في PostgreSQL:

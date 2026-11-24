@@ -22,7 +22,7 @@ export function Card({
   dense?: boolean;
 }) {
   return (
-    <section className={`card fade-in ${className}`}>
+    <section className={`card fade-in overflow-hidden ${className}`}>
       {(title || actions) && (
         <header className="flex items-start justify-between gap-3 border-b px-4 py-3" style={{ borderColor: 'var(--border)' }}>
           <div className="min-w-0">

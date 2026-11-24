@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   CheckCircle2,
   FileSignature,
@@ -13,12 +13,19 @@ import {
 import { useApp } from '@/components/AppProvider';
 import { Card, EmptyState, Metric, SignatureDialog, Skeleton, StatusChip, Toolbar } from '@/components/ui';
 import { TestChart } from '@/components/TestCharts';
-import { appendAudit, db } from '@/core/db/database';
-import { fingerprint } from '@/core/engine/runEngine';
+import { db } from '@/core/db/database';
 import { LIMITS, TESTS } from '@/core/protocol';
 import {
+  ApiError,
+  api,
+  downloadReport,
+  toRunRecord,
+  toRunTestResults,
+  type ServerRun,
+  type ServerRunSummary,
+} from '@/core/api/client';
+import {
   LIMIT_SOURCES,
-  ROLE_PERMISSIONS,
   SOURCE_LABELS,
   type AcceptanceLimit,
   type RunRecord,
@@ -28,7 +35,7 @@ import {
 type Tab = 'queue' | 'limits' | 'conflicts';
 
 export default function QaPage() {
-  const { t, lang, ready, user, notify } = useApp();
+  const { t, lang, ready, user, session, notify, can } = useApp();
   const [tab, setTab] = useState<Tab>('queue');
   const [runs, setRuns] = useState<RunRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,18 +45,55 @@ export default function QaPage() {
   const [signAction, setSignAction] = useState<'review' | 'approve' | 'limit'>('review');
   const [busy, setBusy] = useState(false);
   const [activeTest, setActiveTest] = useState<string>('');
+  const [pendingIds, setPendingIds] = useState<Set<string>>(new Set());
+  const [loadError, setLoadError] = useState<string | null>(null);
 
-  const canReview = user ? ROLE_PERMISSIONS[user.role].includes('calibration.review') : false;
-  const canApprove = user ? ROLE_PERMISSIONS[user.role].includes('calibration.approve') : false;
-  const canApproveLimits = user ? ROLE_PERMISSIONS[user.role].includes('limits.approve') : false;
+  const canReview = can('calibration.review');
+  const canApprove = can('calibration.approve');
+  const canApproveLimits = can('limits.approve');
+  const canExport = can('reports.export');
+
+  /**
+   * Loads from the server, falling back to the cached snapshot only when the API
+   * is unreachable. Identity names are resolved from the returned run rows so the
+   * queue reflects what is actually stored.
+   */
+  const loadRuns = useCallback(async () => {
+    try {
+      const [summaries, pending] = await Promise.all([api.runs({ page_size: 100 }), canApprove ? api.pendingApprovals() : Promise.resolve([])]);
+      const detailed = await Promise.all(summaries.map((row) => api.run(row.id)));
+      const mapped: RunRecord[] = detailed.map((run: ServerRun) =>
+        toRunRecord(run, {
+          instrumentName: run.instrument_id,
+          analyst: run.analyst_id,
+          reviewer: run.reviewer_id,
+          qaApprover: run.qa_approver_id,
+        }),
+      );
+      setRuns(mapped);
+      setPendingIds(new Set(pending.map((p: ServerRunSummary) => p.id)));
+      setLoadError(null);
+    } catch (error) {
+      if (error instanceof ApiError) {
+        setLoadError(error.text(lang));
+      } else {
+        const cached = await db().runs.toArray();
+        setRuns(cached);
+        setLoadError(
+          cached.length
+            ? t('الخادم غير متاح — تُعرض نسخة مخزّنة للقراءة فقط.', 'Server unreachable — showing a read-only cached copy.')
+            : t('تعذر تحميل التشغيلات.', 'Runs could not be loaded.'),
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [canApprove, lang, t]);
 
   useEffect(() => {
     if (!ready) return;
-    void (async () => {
-      setRuns(await db().runs.toArray());
-      setLoading(false);
-    })();
-  }, [ready, signOpen]);
+    void loadRuns();
+  }, [ready, loadRuns]);
 
   const run = runs.find((r) => r.id === selected) ?? null;
 
@@ -73,97 +117,72 @@ export default function QaPage() {
     return rows;
   }, []);
 
-  const pending = runs.filter((r) => !r.qaApprover && r.overallStatus !== 'INCOMPLETE');
-  const approved = runs.filter((r) => r.qaApprover);
+  // pendingIds comes from GET /runs/pending/approvals — the server's own view of
+  // what still needs a QA decision (approved rows leave the list)
+  const pending = runs.filter((r) => pendingIds.has(r.id) || (!r.qaApprover && r.overallStatus !== 'INCOMPLETE'));
+  const approved = runs.filter((r) => r.isLocked);
 
+  /**
+   * Signatures are verified server-side: the run service re-checks the password
+   * with Argon2id, enforces segregation of duties and writes the audit entry. The
+   * client cannot bypass any of it, and shows the server's rejection verbatim.
+   */
   const performSigned = async (reason: string, password: string) => {
     if (!user) return;
     setBusy(true);
     try {
       if (signAction === 'limit') {
-        // limit approvals are recorded as governance decisions in the audit trail
-        await appendAudit({
-          actor: user.username,
-          role: user.role,
-          action: 'ACCEPTANCE_LIMIT_APPROVED',
-          entity: 'acceptance_limit',
-          entityId: 'batch',
-          module: 'qa',
-          after: { approved: Object.keys(overrides).length, decisions: overrides },
-          reason,
-        });
-        notify('success', t('تم اعتماد الحدود المحددة', 'Limits approved'), t('سُجل القرار في سجل التدقيق غير القابل للتعديل.', 'Decision recorded in the immutable audit trail.'));
-      } else if (run) {
-        // segregation of duties — enforced here as well as on the server
-        if (run.analyst === user.username) {
-          notify('error', t('فصل المهام', 'Segregation of duties'), t('لا يمكنك مراجعة أو اعتماد تشغيل نفّذته بنفسك.', 'You cannot review/approve a run you executed.'));
+        const ids = Object.keys(overrides);
+        if (!ids.length) {
+          notify('info', t('لا توجد حدود محددة للاعتماد', 'No limits selected'), '');
           setSignOpen(false);
-          setBusy(false);
           return;
         }
-        if (signAction === 'review' && !run.reviewer) {
-          const updated: RunRecord = { ...run, reviewer: user.username, revision: run.revision + 1 };
-          await db().runs.put(updated);
-          await appendAudit({
-            actor: user.username,
-            role: user.role,
-            action: 'RUN_TECHNICAL_REVIEW_SIGNED',
-            entity: 'calibration_run',
-            entityId: run.id,
-            module: 'qa',
-            before: { reviewer: run.reviewer },
-            after: { reviewer: user.username },
-            reason,
-          });
-          notify('success', t('تم التوقيع الفني', 'Technical review signed'), run.executionCode);
-        } else if (signAction === 'approve') {
-          if (!run.reviewer) {
-            notify('error', t('المراجعة الفنية مطلوبة أولاً', 'Technical review required first'), t('لا يمكن اعتماد QA قبل التوقيع الفني.', 'QA approval requires the technical review signature first.'));
-            setSignOpen(false);
-            setBusy(false);
-            return;
-          }
-          if (run.reviewer === user.username) {
-            notify('error', t('فصل المهام', 'Segregation of duties'), t('لا يمكن اعتماد QA لنفس المراجعة الفنية.', 'QA approval must differ from the technical reviewer.'));
-            setSignOpen(false);
-            setBusy(false);
-            return;
-          }
-          const approvedAt = new Date().toISOString();
-          const updated: RunRecord = {
-            ...run,
-            qaApprover: user.username,
-            qaApprovedAt: approvedAt,
-            completedAt: run.completedAt ?? approvedAt,
-            isLocked: true,
-            revision: run.revision + 1,
-          } as RunRecord & { qaApprovedAt: string };
-          updated.certificateHash = await fingerprint({
-            executionCode: run.executionCode,
-            results: run.results,
-            reviewer: run.reviewer,
-            qaApprover: user.username,
-            approvedAt,
-          });
-          await db().runs.put(updated);
-          await appendAudit({
-            actor: user.username,
-            role: user.role,
-            action: 'RUN_QA_APPROVED_AND_LOCKED',
-            entity: 'calibration_run',
-            entityId: run.id,
-            module: 'qa',
-            before: { isLocked: false, qaApprover: null },
-            after: { isLocked: true, qaApprover: user.username, certificateHash: updated.certificateHash },
-            reason,
-          });
-          notify('success', t('تم الاعتماد النهائي وإقفال النتائج', 'Final approval & lock'), run.executionCode);
+        const results = await Promise.allSettled(
+          ids.map((id) => api.approveLimit(id, password, reason)),
+        );
+        const ok = results.filter((r) => r.status === 'fulfilled').length;
+        const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[];
+        if (ok) {
+          notify(
+            'success',
+            t(`تم اعتماد ${ok} حد قبول`, `${ok} limit(s) approved`),
+            t('كل اعتماد موقّع ومُسجل في سجل التدقيق.', 'Each approval is signed and audited.'),
+          );
+          setOverrides({});
+        }
+        if (failed.length) {
+          const first = failed[0].reason;
+          notify(
+            'error',
+            t(`${failed.length} حداً لم يُعتمد`, `${failed.length} approval(s) rejected`),
+            first instanceof ApiError ? first.text(lang) : String(first),
+          );
+        }
+      } else if (run) {
+        if (signAction === 'review') {
+          const reviewed = await api.reviewRun(run.id, password, reason);
+          notify('success', t('تم التوقيع الفني', 'Technical review signed'), reviewed.execution_code);
+        } else {
+          const approved = await api.approveRun(run.id, password, reason);
+          notify(
+            'success',
+            t('تم الاعتماد النهائي وإقفال النتائج', 'Final approval & lock'),
+            `${approved.execution_code} · ${approved.certificate_hash?.slice(0, 16)}…`,
+          );
         }
       }
       setSignOpen(false);
-      setRuns(await db().runs.toArray());
-    } catch (err) {
-      notify('error', t('فشل الإجراء', 'Action failed'), (err as Error).message);
+      await loadRuns();
+    } catch (error) {
+      const message =
+        error instanceof ApiError
+          ? `${error.code} — ${error.text(lang)}`
+          : error instanceof Error
+            ? error.message
+            : String(error);
+      notify('error', t('فشل الإجراء', 'Action failed'), message);
+      setSignOpen(false);
     } finally {
       setBusy(false);
     }
@@ -269,9 +288,48 @@ export default function QaPage() {
               <>
                 <Card
                   title={t('ملخص التشغيل', 'Run summary')}
-                  actions={<StatusChip status={run.overallStatus} />}
+                  actions={
+                    <div className="flex items-center gap-1.5">
+                      <StatusChip status={run.overallStatus} />
+                      <button
+                        className="btn btn-ghost px-2 py-1 text-[10.5px]"
+                        disabled={!canExport}
+                        onClick={() =>
+                          downloadReport(`/reports/runs/${run.id}/data.xlsx`, `${run.executionCode}-data.xlsx`).catch(
+                            (e: unknown) =>
+                              notify(
+                                'error',
+                                t('تعذر التصدير', 'Export failed'),
+                                e instanceof ApiError ? e.text(lang) : String(e),
+                              ),
+                          )
+                        }
+                      >
+                        <FileSignature size={12} /> XLSX
+                      </button>
+                      <button
+                        className="btn btn-ghost px-2 py-1 text-[10.5px]"
+                        disabled={!run.isLocked || !canExport}
+                        title={t('تُصدر الشهادة فقط لتشغيل معتمد ومقفل', 'Issued only for an approved and locked run')}
+                        onClick={() =>
+                          downloadReport(
+                            `/reports/runs/${run.id}/certificate.pdf`,
+                            `${run.executionCode}-certificate.pdf`,
+                          ).catch((e: unknown) =>
+                            notify(
+                              'error',
+                              t('تعذر إصدار الشهادة', 'Certificate failed'),
+                              e instanceof ApiError ? e.text(lang) : String(e),
+                            ),
+                          )
+                        }
+                      >
+                        <FileSignature size={12} /> PDF
+                      </button>
+                    </div>
+                  }
                 >
-                  <div className="grid gap-2 text-[11.5px] sm:grid-cols-2 lg:grid-cols-4">
+                  <dl className="grid grid-cols-1 gap-x-4 gap-y-2 text-[11.5px] sm:grid-cols-2">
                     {[
                       [t('رمز التشغيل', 'Execution'), run.executionCode],
                       [t('الجهاز', 'Instrument'), run.instrumentName],
@@ -279,19 +337,27 @@ export default function QaPage() {
                       [t('المحلل', 'Analyst'), run.analyst],
                       [t('الحرارة/الرطوبة', 'T/RH'), `${run.ambientTempC}°C / ${run.ambientHumidity}%`],
                       [t('البدء', 'Started'), new Date(run.startedAt).toLocaleString(lang === 'ar' ? 'ar-YE' : 'en-GB')],
-                      [t('بصمة الشهادة', 'Certificate hash'), (run.certificateHash ?? '—').slice(0, 16) + '…'],
+                      [t('بصمة الشهادة', 'Certificate hash'), run.certificateHash ?? '—'],
                       [t('الإصدار', 'Revision'), String(run.revision)],
                     ].map(([k, v]) => (
-                      <div key={k} className="rounded-lg px-2.5 py-1.5" style={{ background: 'var(--surface-2)' }}>
-                        <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                      <div
+                        key={k}
+                        className="flex min-w-0 flex-col gap-0.5 rounded-lg px-2.5 py-1.5"
+                        style={{ background: 'var(--surface-2)' }}
+                      >
+                        <dt className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
                           {k}
-                        </p>
-                        <p className="truncate font-mono text-[11px] font-semibold" title={String(v)}>
-                          {v}
-                        </p>
+                        </dt>
+                        <dd
+                          className="break-all font-mono text-[11px] font-semibold"
+                          style={{ direction: 'ltr', textAlign: 'start' }}
+                          title={String(v)}
+                        >
+                          {String(v)}
+                        </dd>
                       </div>
                     ))}
-                  </div>
+                  </dl>
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {run.results.map((r) => (

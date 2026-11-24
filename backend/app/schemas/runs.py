@@ -69,6 +69,8 @@ class TestResultOut(BaseModel):
     notes_ar: str | None = None
     formula_errors: list[str] = Field(default_factory=list)
     outputs: dict[str, Any] = Field(default_factory=dict)
+    # Raw inputs exactly as captured and signed at execution time (ALCOA+: original).
+    raw_inputs: dict[str, Any] = Field(default_factory=dict)
 
 
 class RunOut(BaseModel):

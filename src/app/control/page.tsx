@@ -31,7 +31,7 @@ import {
 type Tab = 'users' | 'instruments' | 'refs' | 'protocol' | 'system';
 
 export default function ControlPage() {
-  const { t, lang, ready, user, notify, setUser, setLang, setTheme, theme } = useApp();
+  const { t, lang, ready, user, notify, session, setLang, setTheme, theme } = useApp();
   const [tab, setTab] = useState<Tab>('instruments');
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [refs, setRefs] = useState<ReferenceEquipment[]>([]);
@@ -320,16 +320,15 @@ export default function ControlPage() {
                         {ROLE_PERMISSIONS[u.role].length} {t('صلاحية', 'perms')}
                       </td>
                       <td>
-                        <button
-                          className="btn btn-ghost px-2 py-1 text-[10.5px]"
-                          onClick={() => {
-                            setUser(u);
-                            notify('info', t('تم تبديل الهوية', 'Identity switched'), `${u.username} · ${ROLE_LABELS[u.role][lang]}`);
-                          }}
-                          disabled={user?.id === u.id}
+                        <span
+                          className="text-[10px]"
+                          style={{ color: user?.id === u.id ? 'var(--brand)' : 'var(--text-muted)' }}
+                          title={t('الهوية تُدار على الخادم فقط — يلزم تسجيل دخول', 'Identity is server-issued only — sign in as that user')}
                         >
-                          {t('تبديل', 'Switch')}
-                        </button>
+                          {user?.id === u.id
+                            ? t('الجلسة الحالية', 'Current session')
+                            : t('يلزم دخول', 'Sign in to use')}
+                        </span>
                       </td>
                     </tr>
                   ))}

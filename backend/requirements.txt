@@ -18,6 +18,8 @@ matplotlib==3.10.0
 reportlab==4.2.5
 openpyxl==3.1.5
 qrcode[pil]==8.0
+arabic-reshaper==3.1.0
+python-bidi==0.6.12
 httpx==0.28.1
 pytest==8.3.4
 pytest-asyncio==0.25.2
