@@ -1,0 +1,142 @@
+version: '3.9'
+
+# SBDMA Laboratory Calibration & OQ Intelligence Platform
+# Frontend: Next.js 15 (this repository root)  ·  Backend: FastAPI + PostgreSQL 16 + Redis + Celery
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: '10m'
+    max-file: '5'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sbdma-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sbdma}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-sbdma_calibration}
+      TZ: UTC
+    command: >
+      postgres -c timezone=UTC
+               -c log_timezone=UTC
+               -c wal_level=replica
+               -c archive_mode=on
+               -c archive_command='test ! -f /var/lib/postgresql/wal_archive/%f && cp %p /var/lib/postgresql/wal_archive/%f'
+               -c max_connections=200
+               -c shared_buffers=512MB
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - wal_archive:/var/lib/postgresql/wal_archive
+      - ./infra/scripts/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-sbdma} -d ${POSTGRES_DB:-sbdma_calibration}']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+    networks: [sbdma]
+
+  redis:
+    image: redis:7-alpine
+    container_name: sbdma-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '512mb', '--maxmemory-policy', 'allkeys-lru']
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    logging: *default-logging
+    networks: [sbdma]
+
+  api:
+    build:
+      context: ./backend
+    container_name: sbdma-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sbdma}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sbdma_calibration}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    ports:
+      - '8000:8000'
+    logging: *default-logging
+    networks: [sbdma]
+
+  worker:
+    build:
+      context: ./backend
+    container_name: sbdma-worker
+    restart: unless-stopped
+    command: ['celery', '-A', 'app.workers.celery_app', 'worker', '-l', 'INFO', '--concurrency=4']
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sbdma}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sbdma_calibration}
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    logging: *default-logging
+    networks: [sbdma]
+
+  beat:
+    build:
+      context: ./backend
+    container_name: sbdma-beat
+    restart: unless-stopped
+    command: ['celery', '-A', 'app.workers.celery_app', 'beat', '-l', 'INFO']
+    environment:
+      REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sbdma}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sbdma_calibration}
+      JWT_SECRET: ${JWT_SECRET}
+    depends_on:
+      redis: { condition: service_healthy }
+    logging: *default-logging
+    networks: [sbdma]
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sbdma-web
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-/api/v1}
+      NEXT_TELEMETRY_DISABLED: '1'
+    depends_on: [api]
+    expose: ['3000']
+    logging: *default-logging
+    networks: [sbdma]
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: sbdma-nginx
+    restart: unless-stopped
+    volumes:
+      - ./infra/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./infra/nginx/certs:/etc/nginx/certs:ro
+    ports:
+      - '80:80'
+      - '443:443'
+    depends_on: [web, api]
+    logging: *default-logging
+    networks: [sbdma]
+
+volumes:
+  pgdata:
+  wal_archive:
+  redisdata:
+
+networks:
+  sbdma:
+    driver: bridge

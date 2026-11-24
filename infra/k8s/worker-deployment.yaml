@@ -1,0 +1,57 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sbdma-worker
+  labels: { app: sbdma-worker, tier: worker }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: sbdma-worker }
+  template:
+    metadata:
+      labels: { app: sbdma-worker, tier: worker }
+    spec:
+      securityContext: { runAsNonRoot: true, runAsUser: 1001 }
+      containers:
+        - name: worker
+          image: ghcr.io/tadkeera/sbdma-calibration-api:1.0.0
+          command: ['celery', '-A', 'app.workers.celery_app', 'worker', '-l', 'INFO', '--concurrency=4', '--max-tasks-per-child=200']
+          envFrom:
+            - secretRef: { name: sbdma-secrets }
+            - configMapRef: { name: sbdma-config }
+          resources:
+            requests: { cpu: 300m, memory: 768Mi }
+            limits:   { cpu: '2',  memory: 2Gi }
+          livenessProbe:
+            exec: { command: ['celery', '-A', 'app.workers.celery_app', 'inspect', 'ping', '-d', 'celery@$(hostname)'] }
+            initialDelaySeconds: 40
+            periodSeconds: 60
+            timeoutSeconds: 20
+          volumeMounts: [{ name: storage, mountPath: /srv/storage }]
+      volumes:
+        - { name: storage, persistentVolumeClaim: { claimName: sbdma-storage } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sbdma-beat
+  labels: { app: sbdma-beat }
+spec:
+  replicas: 1   # exactly one scheduler — duplicate beats double-fire reminders
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app: sbdma-beat }
+  template:
+    metadata:
+      labels: { app: sbdma-beat }
+    spec:
+      containers:
+        - name: beat
+          image: ghcr.io/tadkeera/sbdma-calibration-api:1.0.0
+          command: ['celery', '-A', 'app.workers.celery_app', 'beat', '-l', 'INFO']
+          envFrom:
+            - secretRef: { name: sbdma-secrets }
+            - configMapRef: { name: sbdma-config }
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits:   { cpu: 200m, memory: 256Mi }

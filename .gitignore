@@ -1,0 +1,28 @@
+# dependencies
+node_modules/
+.venv/
+__pycache__/
+*.py[cod]
+
+# builds
+.next/
+out/
+build/
+dist/
+tsconfig.tsbuildinfo
+
+# env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+certs/
+
+# runtime
+*.log
+storage/
+backups/
+.DS_Store
+.vscode/
+.idea/
