@@ -1,27 +1,27 @@
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-sqlalchemy[asyncio]==2.0.36
-asyncpg==0.30.0
-alembic==1.14.0
-pydantic==2.10.5
-pydantic-settings==2.7.1
-python-jose[cryptography]==3.3.0
-pyotp==2.9.0
+fastapi==0.165.0
+uvicorn[standard]==0.54.0
+sqlalchemy[asyncio]==2.1.9
+asyncpg==0.32.0
+alembic==1.20.1
+pydantic==2.14.4
+pydantic-settings==2.16.3
+python-jose[cryptography]==3.5.0
+pyotp==2.12.1
 argon2-cffi==25.1.0
-psycopg[binary]==3.2.4
-email-validator==2.2.0
-python-multipart==0.0.20
+psycopg[binary]==3.3.9
+email-validator==2.4.0
+python-multipart==0.0.34
 # redis-py 6.1+ is required by Celery 5.4's transport — the previous 5.2.1 pin
 # could not run a worker at all, which went unnoticed because redis was optional.
 redis==6.4.0
-celery==5.4.0
+celery==5.7.0
 # numpy / scipy / matplotlib deliberately absent: no module imports them. The math
 # engine is Decimal-based (NUMERIC(20,8) precision, no binary floats), statistics are
 # computed explicitly, and charts are drawn client-side with ECharts. They were 198 MB
 # of image — and more than the whole Vercel function budget — carried for nothing.
 reportlab==4.2.5
 openpyxl==3.1.5
-qrcode[pil]==8.0
+qrcode[pil]==8.2
 arabic-reshaper==3.1.0
 python-bidi==0.6.12
 # test tooling lives in requirements-dev.txt so the runtime bundle stays small enough
