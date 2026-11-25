@@ -14,7 +14,8 @@ from __future__ import annotations
 
 import io
 import uuid
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any
 
@@ -47,23 +48,62 @@ from reportlab.platypus import (
     TableStyle,
 )
 
-FONT_DIR = "/usr/share/fonts/truetype/dejavu"
+#: Font families, in the order a deployment should be able to find them.
+#:
+#: The first entry is **shipped with the application** and that is deliberate: the
+#: platform's Python runtime is not the laboratory's container, and on Vercel there is
+#: no ``/usr/share/fonts`` at all. Production found this the hard way — the weekly KPI
+#: job died with ``KeyError: 'DejaVuSans-Bold'`` because a style referenced a font that
+#: had never been registered, and every PDF that carries the letterhead was affected.
+#: A report generator whose fonts come from the host is a report generator that works
+#: until it is deployed somewhere else.
+ASSET_FONT_DIR = Path(__file__).resolve().parents[1] / "assets" / "fonts"
+FONT_SEARCH_PATH: tuple[Path, ...] = (
+    ASSET_FONT_DIR,
+    Path("/usr/share/fonts/truetype/dejavu"),
+    Path("/usr/share/fonts/TTF"),
+)
+
 FONT_REGULAR = "DejaVuSans"
 FONT_BOLD = "DejaVuSans-Bold"
+#: What ReportLab registers out of the box; used when no Arabic-capable font is found,
+#: so a missing font degrades the shaping instead of raising from inside a PDF build.
+FALLBACK_REGULAR = "Helvetica"
+FALLBACK_BOLD = "Helvetica-Bold"
+
+
+def _font_source(filename: str) -> Path | None:
+    for directory in FONT_SEARCH_PATH:
+        candidate = directory / filename
+        if candidate.is_file():
+            return candidate
+    return None
 
 
 def _register_fonts() -> bool:
-    """Register an Arabic-capable font; fall back to Helvetica if unavailable."""
+    """Register an Arabic-capable font from the first place that has one."""
     try:
-        if FONT_REGULAR not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(TTFont(FONT_REGULAR, f"{FONT_DIR}/DejaVuSans.ttf"))
-            pdfmetrics.registerFont(TTFont(FONT_BOLD, f"{FONT_DIR}/DejaVuSans-Bold.ttf"))
+        regular = _font_source("DejaVuSans.ttf")
+        bold = _font_source("DejaVuSans-Bold.ttf")
+        if regular is None or bold is None:
+            return False
+        registered = pdfmetrics.getRegisteredFontNames()
+        if FONT_REGULAR not in registered:
+            pdfmetrics.registerFont(TTFont(FONT_REGULAR, str(regular)))
+        if FONT_BOLD not in registered:
+            pdfmetrics.registerFont(TTFont(FONT_BOLD, str(bold)))
         return True
-    except Exception:  # pragma: no cover - depends on the base image
+    except Exception:  # pragma: no cover - a corrupt font file
         return False
 
 
 HAS_ARABIC_FONT = _register_fonts()
+
+#: The names every style must use. Never reference the constants above directly: if the
+#: bold face failed to register, a style naming it raises at build time, not at import,
+#: and the failure lands in whichever report happened to need bold text.
+FONT_BODY = FONT_REGULAR if HAS_ARABIC_FONT else FALLBACK_REGULAR
+FONT_STRONG = FONT_BOLD if HAS_ARABIC_FONT else FALLBACK_BOLD
 
 
 def ar(text: str) -> str:
@@ -156,8 +196,8 @@ def _qr_image(payload: str) -> Image:
 
 def _styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
-    font = FONT_REGULAR if HAS_ARABIC_FONT else "Helvetica"
-    bold = FONT_BOLD if HAS_ARABIC_FONT else "Helvetica-Bold"
+    font = FONT_BODY
+    bold = FONT_STRONG
     return {
         "title": ParagraphStyle(
             "title", parent=base["Title"], fontName=bold, fontSize=15, leading=19,
@@ -237,9 +277,9 @@ def _letterhead(
     # language still fits on one line. Two blocks of different sizes read as two
     # unrelated captions; a letterhead has to look like a single band.
     size = 8.4
-    longest_en = max(stringWidth(line, pdfmetrics.getFont(FONT_BOLD).fontName, size) for line in english)
+    longest_en = max(stringWidth(line, FONT_STRONG, size) for line in english)
     shaped_ar = [ar(line) for line in arabic]
-    longest_ar = max(stringWidth(line, pdfmetrics.getFont(FONT_BOLD).fontName, size) for line in shaped_ar)
+    longest_ar = max(stringWidth(line, FONT_STRONG, size) for line in shaped_ar)
     longest = max(longest_en, longest_ar)
     if longest > avail:
         size = max(6.6, size * avail / longest)
@@ -352,7 +392,7 @@ def build_certificate_pdf(payload: dict[str, Any]) -> bytes:
     st = _styles()
     def on_page(canvas, doc):  # noqa: ANN001
         canvas.saveState()
-        canvas.setFont(FONT_REGULAR if HAS_ARABIC_FONT else "Helvetica", 7)
+        canvas.setFont(FONT_BODY, 7)
         canvas.setFillColor(colors.HexColor("#8a949e"))
         canvas.drawString(14 * mm, 9 * mm, payload["document_id"])
         canvas.drawRightString(
@@ -589,7 +629,7 @@ def build_certificate_pdf(payload: dict[str, Any]) -> bytes:
                 [
                     Paragraph("<b>Certificate fingerprint (SHA-256)</b>", st["cellb"]),
                     Paragraph(
-                        f'<font face="{FONT_REGULAR}" size=7>{run["certificate_hash"]}</font>',
+                        f'<font face="{FONT_BODY}" size=7>{run["certificate_hash"]}</font>',
                         st["cell"],
                     ),
                     Spacer(1, 1.5 * mm),
@@ -946,7 +986,7 @@ def build_kpi_pdf(payload: dict[str, Any]) -> bytes:
 
     def on_page(canvas, doc_):  # noqa: ANN001
         canvas.saveState()
-        canvas.setFont(FONT_REGULAR if HAS_ARABIC_FONT else "Helvetica", 7)
+        canvas.setFont(FONT_BODY, 7)
         canvas.setFillColor(colors.HexColor("#8a949e"))
         canvas.drawString(14 * mm, 9 * mm, payload["document_id"])
         canvas.drawRightString(
