@@ -114,7 +114,12 @@ jobs:
 
   e2e:
     name: End-to-end — Playwright/Chromium against a seeded API
-    runs-on: ubuntu-latest
+    # Pinned, not `ubuntu-latest`: the newest runner image (26.04) is not a platform
+    # Playwright 1.55 can install Chromium's system libraries for
+    # ("Playwright does not support chromium on ubuntu26.04-x64"), and a suite that
+    # fails to install its browser proves nothing. Bump the image when Playwright is
+    # upgraded, not before.
+    runs-on: ubuntu-24.04
     # Unit coverage proves the parts; this proves the system. It runs last because a
     # browser run is the most expensive step and the least useful one to debug when a
     # type error is waiting behind it.
