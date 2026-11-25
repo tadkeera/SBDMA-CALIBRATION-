@@ -1,7 +1,7 @@
 # SBDMA · نظام إدارة ومعايرة الأجهزة المخبرية
 ### Laboratory Calibration & OQ Intelligence Platform — Supreme Board of Drugs & Medical Devices
 
-[![Version](https://img.shields.io/badge/version-1.9.0-21695e)](VERSION)
+[![Version](https://img.shields.io/badge/version-2.0.0-21695e)](VERSION)
 [![ISO/IEC 17025](https://img.shields.io/badge/ISO%2FIEC-17025-21695e)](#الامتثال-التنظيمي)
 [![21 CFR Part 11](https://img.shields.io/badge/21%20CFR-Part%2011-21695e)](#الامتثال-التنظيمي)
 [![Tests](https://img.shields.io/badge/tests-102%20passing-16794f)](#الاختبارات-المنفذة)
@@ -11,11 +11,14 @@
 ## نظرة عامة
 
 منصة إنتاجية لمعايرة وتحقق الأداء (Calibration & OQ) لأجهزة مختبرات الهيئة العليا للأدوية،
-مبنية على بروتوكول **Shimadzu i-Series LC-2050C UV** المرجعي (13 اختباراً)، وقابلة للتوسع
+مبنية على بروتوكول **HPLC Shimadzu i-Series LC-2050C** الموحد (20 اختباراً)، وقابلة للتوسع
 لكل فئات الأجهزة (HPLC, GC, UV-Vis, FTIR, Karl Fischer, Dissolution, Balances, Autoclaves,
 Incubators, Stability Chambers).
 
-**البروتوكول المدمج:** `SHIMADZU-LC2050C-UV-CAL` · الإصدار `1.0.0` · 13 اختباراً · 108 حد قبول من 5 مصادر.
+**البروتوكول المدمج:** `HPLC-SHIMADZU-LC2050C-PROTOCOL` · الإصدار `2.0.0` · 20 اختباراً · 93 حد قبول · 77 حقلاً · 75 معادلة.
+الجدولان (TypeScript وPython) والوثيقة [`docs/protocol.md`](docs/protocol.md) **مُولَّدون من
+ملف واحد** (`blueprint.py`) بواسطة `scripts/export_protocol_ts.py` و`export_protocol_doc.py`،
+و`--check` يُفشل البناء عند أي انحراف.
 
 | المكوّن | التقنية |
 |---|---|
@@ -114,7 +117,7 @@ PASS / FAIL / UNDER_REVIEW / INCOMPLETE
 6. **الترحيل (Carryover):** الصيغ الثلاث محفوظة منفصلة (Ch.2 / iOQ / SOP) مع الإشارة السالبة دون تصفير صامت.
 7. **التقريب:** كل القيم تُخزَّن كاملة الدقة، والتقريب يُطبَّق في طبقة العرض والتقارير فقط.
 
-التفاصيل الكاملة في [`docs/protocol-13-tests.md`](docs/protocol-13-tests.md) و
+التفاصيل الكاملة في [`docs/protocol.md`](docs/protocol.md) و
 [`docs/gap-closure-matrix.md`](docs/gap-closure-matrix.md).
 
 ---
@@ -168,9 +171,9 @@ https://<project>.vercel.app/api/v1/*    →  api   (FastAPI من backend/، ent
 | محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npx vitest run` |
 | طبقة التكيّف مع الخادم (TypeScript) | 15 | ✅ ناجحة | `npx vitest run` |
 | توليد رمز TOTP للحزمة (TypeScript، متجهات RFC) | 4 | ✅ ناجحة | `npx vitest run` |
-| محرك الحسابات + API + الحوكمة + التقارير + المرفقات + حدّ الطلبات + حراسة النشر + حماية E2E (Python/PostgreSQL/Redis) | 224 | ✅ ناجحة | `cd backend && pytest` |
+| محرك الحسابات + API + الحوكمة + التقارير + الترويسة + المرفقات + حدّ الطلبات + حراسة النشر + حماية E2E (Python/PostgreSQL/Redis) | 239 | ✅ ناجحة | `cd backend && pytest` |
 | بوابة CI (PostgreSQL 16 + Redis 8 خدميين، تغطية ≥ 85%) | 4 وظائف | ✅ | `.github/workflows/ci.yml` |
-| **حزمة E2E داخل المستودع** (Playwright/Chromium على بنية إنتاج) | **14 اختباراً** | ✅ دخول ← 13 اختباراً ← مراجعة ← اعتماد ← شهادة PDF/XLSX ← سلسلة التدقيق | `npm run e2e:prepare && npm run e2e` |
+| **حزمة E2E داخل المستودع** (Playwright/Chromium على بنية إنتاج) | **18 اختباراً** | ✅ دخول ← 20 اختباراً ← مراجعة ← اعتماد ← شهادة PDF/XLSX ← سلسلة التدقيق ← إعداد الترويسة | `npm run e2e:prepare && npm run e2e` |
 
 التغطية تشمل: أولويات العمليات، صيغ التدفق والتدرج والحقن الوزني، OLS، `%RSD`، الحساسية
 النسبية، الترحيل، رفض التعبيرات الخطرة (`__import__`, `eval`, `open`, `;`, comprehensions)،
@@ -183,7 +186,7 @@ https://<project>.vercel.app/api/v1/*    →  api   (FastAPI من backend/، ent
 **منفَّذ ويعمل فعلياً** (المراحل A وB وعامل ثانٍ وانحرافات OOS): 23 جدولاً + 25 Trigger حوكمة،
 58 عملية REST،
 Argon2id + JWT بتدوير رموز، توقيع إلكتروني، فصل مهام، عزل أقسام، وSeeders حتمية
-من البروتوكول نفسه (108 حدود)، وشهادات PDF وملفات Excel مُدقَّقة التنزيل.
+من البروتوكول نفسه (93 حداً)، وشهادات PDF وملفات Excel مُدقَّقة التنزيل بترويسة رسمية.
 
 **الواجهة لم تعد تعمل على بيانات محلية:** كل بطاقة تقرأ من `/api/v1` عبر عميل مطبوع الأنواع،
 والصلاحيات تأتي من جلسة الخادم لا من المتصفح. عند انقطاع الشبكة تُعرض نسخة **قراءة فقط**
@@ -202,16 +205,16 @@ Argon2id + JWT بتدوير رموز، توقيع إلكتروني، فصل مه
 ```text
 sbdma-platform/
 ├── src/
-│   ├── app/            # المسارات: /, /lab, /qa, /engineering, /control, /audit, /login
-│   ├── components/     # Design System + ECharts + TestCharts + Shell
+│   ├── app/            # المسارات: /, /lab, /qa, /engineering, /control, /audit, /settings, /login
+│   ├── components/     # Design System + ECharts + TestCharts + Shell + Letterhead
 │   └── core/
 │       ├── engine/     # safeMath.ts (AST) · runEngine.ts (الحوكمة والحكم)
 │       ├── db/         # database.ts (Dexie) · seed.ts (البيانات المرجعية)
-│       ├── protocol.ts # 13 اختباراً + 108 حد قبول + مصفوفة الأعطال
+│       ├── protocol.ts # مُولَّد: 20 اختباراً + 93 حد + 75 معادلة + مصفوفة الأعطال
 │       └── types.ts    # النماذج والصلاحيات
 ├── backend/            # FastAPI + المحرك المرجعي + الاختبارات
 ├── infra/              # nginx · k8s · سكربتات النسخ الاحتياطي
-├── docs/               # 9 وثائق هندسية
+├── docs/               # 13 وثيقة هندسية (منها protocol.md وload-test.md المُولَّدة/المقاسة)
 ├── tests/              # Vitest
 ├── docker-compose.yml · Dockerfile · .env.example
 └── IMPLEMENTATION_PLAN.md

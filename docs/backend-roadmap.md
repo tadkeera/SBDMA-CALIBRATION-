@@ -21,7 +21,7 @@ backend/
 │   ├── schemas/                ✅ common, auth, runs, assets
 │   ├── domain/
 │   │   ├── math_engine/        ✅ AST آمن — لا eval/exec
-│   │   ├── protocol/blueprint  ✅ 13 اختباراً · 108 حداً · 54 معادلة · مصفوفة أعطال
+│   │   ├── protocol/blueprint  ✅ 20 اختباراً · 93 حداً · 75 معادلة · مصفوفة أعطال (v2.0.0)
 │   │   └── scoring/engine.py   ✅ محكمة الحوكمة + execute_run
 │   ├── services/               ✅ auth_service · run_service · audit_service (سلسلة Hash)
 │   ├── api/

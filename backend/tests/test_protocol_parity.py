@@ -126,6 +126,23 @@ def test_protocol_ts_is_generated_from_the_blueprint() -> None:
     assert result.returncode == 0, result.stdout + result.stderr
 
 
+def test_protocol_reference_document_is_generated_from_the_blueprint() -> None:
+    """`docs/protocol.md` is generated too — a stale limit in a document is a defect.
+
+    A laboratory that reads an acceptance limit the engine does not enforce will sign
+    a report that is wrong and believe it is compliant.
+    """
+    generator = FRONTEND / "scripts" / "export_protocol_doc.py"
+    assert generator.is_file(), "the protocol document generator is missing"
+    result = subprocess.run(
+        [sys.executable, str(generator), "--check"],
+        cwd=FRONTEND,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 TS_HARNESS = FRONTEND / "tests" / "parity" / "run_ts_engine.ts"
 ESBUILD = FRONTEND / "node_modules" / ".bin" / "esbuild"
 

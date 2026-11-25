@@ -2,7 +2,7 @@
 
 > المرجع الملزم: `SBDMA_Calibration_Master_Prompt.txt` (المعمارية والتقنيات والبنود 01–34)
 > المرجع العلمي: `HPLC_LC2050C_UV_Calibration_Protocol_and_Comparative_Report.docx`
-> الحالة بتاريخ 2026-11-25 — الإصدار `1.9.0`
+> الحالة بتاريخ 2026-11-25 — الإصدار `2.0.0`
 > تقييم موقع المشروع من المراحل العشر، بدليله: `docs/phase-status-assessment.md`
 
 ---
@@ -20,7 +20,7 @@
 | 02 | قاعدة البيانات + Seeders | ✅ مكتملة (طبقة المتصفح) | 9 جداول IndexedDB مطابقة لمخطط PostgreSQL · 8 أجهزة · 6 أدوات مرجعية · 4 مواد قياسية · 5 أقسام | `src/core/db/database.ts`, `src/core/db/seed.ts` |
 | 03 | البنية الأساسية للخادم الخلفي | 🟡 مواصفة + هيكل | هيكل المجلدات، `requirements.txt`, `Dockerfile`, Health/Liveness/Readiness probes في K8s, معالجة أخطاء مركزية موثقة | `backend/`, `docs/backend-roadmap.md` |
 | 04 | المصادقة + RBAC + عزل الأقسام + سجل تدقيق | ✅ مكتملة (طبقة المتصفح) | سلسلة تدقيق SHA-256 مُتحقَّق منها · `verifyAuditChain()` · Deny-by-Default · حاجز الصلاحية | `src/core/db/database.ts` |
-| 05 | محرك المعادلات الآمن + حدود القبول | ✅ **مكتملة ومختبرة** | AST Parser (TS + Python) بلا `eval` · 108 حد قبول من 5 مصادر · حوكمة `UNDER_REVIEW` | `src/core/engine/*`, `backend/app/domain/math_engine/*` |
+| 05 | محرك المعادلات الآمن + حدود القبول | ✅ **مكتملة ومختبرة** | AST Parser (TS + Python) بلا `eval` · 93 حد قبول من 5 مصادر · حوكمة `UNDER_REVIEW` | `src/core/engine/*`, `backend/app/domain/math_engine/*` |
 | 06 | الوحدات الأساسية + Run Calibration + مصفوفة الأعطال | ✅ مكتملة (واجهة+محرك) | 13 نموذج اختبار ديناميكي · حساب كامل · مصفوفة 6 مكونات | `src/app/lab/page.tsx`, `src/core/protocol.ts` |
 | 07 | التكاملات ومهام Celery (PDF/Excel/QR/إشعارات) | 🟢 منجزة عدا بندين معلَنين | شهادة PDF + XLSX للنتائج والتدقيق + تقرير KPIs أسبوعي + إشعارات انتهاء يومية على Redis حقيقي. **متبقٍّ ومُعلَن:** تحليل LabSolutions، تنبيهات لمبة D2، إرسال بريد/SMS | `backend/app/tasks/*`, `backend/app/services/export_service.py` |
 | 08 | الواجهة الأمامية (RTL/LTR + Theme + 4 لوحات + ECharts) | ✅ مكتملة | 7 مسارات · RTL افتراضي · Light/Dark · 8 أنواع مخططات علمية | `src/app/**`, `src/components/**` |
@@ -32,8 +32,9 @@
 ## ما نُفِّذ فعلياً وقيس
 
 ### 1. المحرك العلمي (المرحلة 05) — العمود الفقري
-- **13 اختباراً** كاملة بمعادلاتها الموثقة من التقرير، كل معادلة تُنفَّذ عبر AST مُتحقق منه.
-- **108 حد قبول** موزعة على 5 مصادر (`INTEGRITY_GUIDE_CH2`, `IOQ_PROTOCOL_CH4`,
+- **20 اختباراً** كاملة بمعادلاتها الموثقة من التقرير، كل معادلة تُنفَّذ عبر AST مُتحقق منه،
+  والجدولان والوثيقة `docs/protocol.md` مُولَّدون من blueprint واحد.
+- **93 حد قبول** موزعة على 5 مصادر (`INTEGRITY_GUIDE_CH2`, `IOQ_PROTOCOL_CH4`,
   `MANUFACTURER_SPEC`, `SOP_LIMIT`, `AUTHORITY_LIMIT`).
 - **حوكمة صارمة:** أي حد بحالة `UNAPPROVED` أو `CONFLICT_REQUIRES_QA` يُرجع `UNDER_REVIEW`
   ولا يمكن أن يُنتج `PASS`. (4 حدود SOP معطوبة موسومة `flagged`).
@@ -46,7 +47,7 @@
 
 ```
 RUN-20261124-3481
-  ├─ إدخال 66 حقلاً في 13 اختباراً
+  ├─ إدخال 77 حقلاً في 20 اختباراً
   ├─ Run Calibration            → 13/13 مطابق · PASS
   ├─ حفظ + بصمة SHA-256          → RUN-…-3481
   ├─ توقيع المراجعة الفنية       → reviewer: reviewer ✓

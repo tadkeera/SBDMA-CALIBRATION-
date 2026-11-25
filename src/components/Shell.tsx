@@ -27,7 +27,7 @@ import { MfaEnrolment } from './MfaEnrolment';
 import { ROLE_LABELS } from '@/core/types';
 import { Letterhead, PrintLetterhead } from '@/components/Letterhead';
 import { PROTOCOL_VERSION, TESTS } from '@/core/protocol';
-import { DEV_CREDIT_URL } from '@/core/constants';
+import { APP_VERSION, DEV_CREDIT_URL } from '@/core/constants';
 import { api, ApiError } from '@/core/api/client';
 
 const NAV = [
@@ -330,7 +330,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <footer className="mt-4 border-t px-4 py-3 text-center text-[10.5px]" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
           <span className="inline-flex items-center gap-1.5">
             <FileBarChart2 size={11} />
-            {t('نظام إدارة ومعايرة الأجهزة المخبرية — الإصدار 1.9.0', 'Laboratory Calibration & OQ Platform — v1.9.0')}
+            {t(
+              `نظام إدارة ومعايرة الأجهزة المخبرية — الإصدار ${APP_VERSION}`,
+              `Laboratory Calibration & OQ Platform — v${APP_VERSION}`,
+            )}
             <span aria-hidden>·</span>
             {t('تطوير: ', 'Developed by: ')}
             <a href={DEV_CREDIT_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)', fontWeight: 700 }}>

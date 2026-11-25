@@ -35,13 +35,16 @@
 | GET | `/instruments` | `instruments.view` | مُقيَّد بالقسم تلقائياً |
 | POST · PATCH · DELETE | `/instruments` · `/instruments/{id}` | `instruments.create` / `.update` / `.delete` | حذف ناعم فقط |
 | GET | `/reference-equipment` · `/reference-standards` | `instruments.view` | يُرجع `expired` و`days_to_expiry` |
-| GET | `/protocols` · `/protocols/{code}` | `instruments.view` | 13 اختباراً و108 حد |
+| GET | `/protocols` · `/protocols/{code}` | `instruments.view` | 20 اختباراً و93 حداً (البروتوكول v2.0.0) |
 | POST | `/limits/{id}/approve` | `limits.approve` | توقيع إلكتروني (كلمة مرور + سبب) |
 | POST | `/runs` | `calibration.run` | يتطلب هيدر `Idempotency-Key` |
 | POST | `/runs/{id}/execute` | `calibration.run` | يشغّل المحرك داخل Transaction واحدة |
 | POST | `/runs/{id}/review` | `calibration.review` | فصل مهام + توقيع |
 | POST | `/runs/{id}/approve` | `calibration.approve` | يقفل التشغيل ونتائجه ويثبّت بصمة الشهادة |
 | GET | `/runs` · `/runs/{id}` · `/runs/pending/approvals` | `instruments.view` / `calibration.approve` | |
+| GET | `/branding` · `/branding/logo` | **عام** | ترويسة التقارير والشعار — عامّان عمداً لأن شاشة الدخول تعرضهما قبل وجود جلسة |
+| PUT | `/branding` · `POST /branding/reset` | `settings.manage` | 4 أسطر عربية + 4 إنجليزية، كل تعديل في سجل التدقيق |
+| POST · DELETE | `/branding/logo` | `settings.manage` | PNG/JPEG/WEBP ≤ 2MB، ويُحوَّل WEBP إلى PNG ليقبله مولّد PDF |
 | GET · POST | `/maintenance/tickets` | `maintenance.manage` (POST) | تستنتج اختبارات ما بعد الأعطال |
 | POST | `/maintenance/tickets/{id}/resolve` | `maintenance.manage` | يُعيد الجهاز إلى `ACTIVE` |
 | GET | `/audit` · `/audit/verify` | `audit.view` | التحقق يعيد `{ok, total, head, broken_at}` |
