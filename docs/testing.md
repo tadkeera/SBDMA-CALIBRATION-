@@ -103,7 +103,7 @@ python3 sbdma-platform/e2e_live.py http://localhost:3000
 > `SBDMA_QA_OFFICER_PASSWORD`) وينهي نفسه برسالة صريحة إذا غابت، ومجموعة القراءات من
 > `SBDMA_E2E_INPUTS` (افتراضياً `/tmp/e2e_inputs.json`). لا بيانات دخول في Git.
 السكربت يستخدم Chromium حقيقياً ويلتقط لقطات في `/tmp/e2e/`، وينتهي بـ`{"failures": [], "console_errors": []}`.
-آخر تشغيل كامل: **ناجح**، شهادة `RUN-20261125-0010-certificate.pdf` (‏63 878 بايت) نُزّلت من المتصفح.
+آخر تشغيل كامل: **ناجح**، شهادة `RUN-20261125-0011-certificate.pdf` (‏63 855 بايت) نُزّلت من المتصفح.
 
 | الخطوة | النتيجة |
 |---|---|
