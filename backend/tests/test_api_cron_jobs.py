@@ -221,6 +221,44 @@ async def test_the_seed_job_registers_the_protocol_once_and_is_audited(
         assert row.new_values["trigger"] == "http"
 
 
+async def test_a_failing_job_leaves_a_readable_trail(
+    client, cron_settings, monkeypatch
+) -> None:  # noqa: ANN001
+    """A cron failure must be inspectable from the database, not only from a log view.
+
+    On a serverless deployment there is no shell and no log tail; a job that 500s is
+    invisible. The failure is recorded before the exception is re-raised, so the
+    status code stays honest *and* the reason survives.
+    """
+    from sqlalchemy import select
+
+    from app.api.v1 import internal
+    from app.core.database import SessionFactory
+    from app.models.audit import AuditLog
+
+    async def boom(*args, **kwargs):  # noqa: ANN001, ANN002
+        raise RuntimeError("supabase pooler refused the connection")
+
+    monkeypatch.setattr(internal, "build_kpi_report", boom)
+
+    # the ASGI test transport re-raises server exceptions instead of rendering a 500;
+    # either way the contract is the same: the failure is recorded, then it propagates
+    with pytest.raises(RuntimeError):
+        await client.post("/api/v1/internal/jobs/kpi-report", headers=_auth())
+
+    async with SessionFactory() as session:
+        row = (
+            await session.execute(
+                select(AuditLog)
+                .where(AuditLog.action == "CRON_JOB_FAILED")
+                .order_by(AuditLog.chain_seq.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+        assert row.new_values["job"] == "kpi-report"
+        assert "RuntimeError" in row.new_values["error"]
+
+
 async def test_scheduled_routes_are_not_in_the_public_api_document(client) -> None:  # noqa: ANN001
     openapi = (await client.get("/api/openapi.json")).json()
     assert not [p for p in openapi["paths"] if "/internal/" in p]

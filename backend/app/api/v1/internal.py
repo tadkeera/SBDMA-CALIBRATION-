@@ -38,6 +38,7 @@ from datetime import date
 from fastapi import APIRouter, Query, Request
 
 from app.api.deps import SessionDep, client_ip
+from app.core.database import SessionFactory
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.schemas.common import ok
@@ -89,6 +90,31 @@ def _trigger_details(request: Request) -> dict:
     }
 
 
+async def _record_failure(request: Request, job: str, exc: BaseException) -> None:
+    """A scheduled job that fails must leave a trace someone can read.
+
+    On a serverless platform the operator has no shell and no log tail: a 500 that
+    only exists in the platform's log viewer is, for the laboratory, a job that
+    silently did nothing. The failure is written to the audit chain in its own
+    session — the request's transaction is already broken by definition — with the
+    exception type and message and nothing that could carry a secret.
+    """
+    detail = f"{type(exc).__name__}: {exc}"[:500]
+    try:
+        async with SessionFactory() as session:
+            await AuditService(session).record(
+                action="CRON_JOB_FAILED",
+                entity_type="scheduled_job",
+                entity_id=uuid.uuid4(),
+                actor_label=_actor_label(request),
+                new_values={"job": job, "error": detail, **_trigger_details(request)},
+                reason="فشل مهمة مجدولة — التفاصيل للأثر",
+            )
+            await session.commit()
+    except Exception:  # pragma: no cover - the failure path must never mask the failure
+        pass
+
+
 def _actor_label(request: Request) -> str:
     return "system:vercel-cron" if request.headers.get("x-vercel-cron") else "system:cron"
 
@@ -104,7 +130,11 @@ async def calibration_due(
     today: date | None = Query(default=None, description="لإعادة تشغيل يوم سابق"),
 ):
     _authorise(request)
-    summary = await NotificationService(session).generate_due_notices(today=today)
+    try:
+        summary = await NotificationService(session).generate_due_notices(today=today)
+    except Exception as exc:
+        await _record_failure(request, "calibration-due", exc)
+        raise
     await AuditService(session).record(
         action="CALIBRATION_DUE_JOB_RAN",
         entity_type="notification",
@@ -132,9 +162,13 @@ async def kpi_report(
     ),
 ):
     _authorise(request)
-    summary = await build_kpi_report(
-        session, for_date=for_date, actor_label=_actor_label(request), force=force
-    )
+    try:
+        summary = await build_kpi_report(
+            session, for_date=for_date, actor_label=_actor_label(request), force=force
+        )
+    except Exception as exc:
+        await _record_failure(request, "kpi-report", exc)
+        raise
     await AuditService(session).record(
         action="KPI_REPORT_JOB_RAN",
         entity_type="report",
@@ -172,7 +206,11 @@ async def seed(request: Request, session: SessionDep):
     performed under.
     """
     _authorise(request)
-    summary = await seed_protocol(session)
+    try:
+        summary = await seed_protocol(session)
+    except Exception as exc:
+        await _record_failure(request, "seed", exc)
+        raise
     await AuditService(session).record(
         action="PROTOCOL_SEED_JOB_RAN",
         entity_type="protocol",
