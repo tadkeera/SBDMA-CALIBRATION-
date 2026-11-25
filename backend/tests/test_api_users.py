@@ -289,7 +289,7 @@ async def test_unlock_clears_the_lockout(client, prepared_db):
     from app.api.middleware import limiter
 
     for _ in range(6):
-        limiter.reset()
+        await limiter.clear()
         await client.post(
             "/api/v1/auth/login", json={"username": "lock.me", "password": "wrong-pass-1"}
         )
@@ -398,7 +398,7 @@ async def test_failed_logins_are_persisted_and_audited(client, prepared_db):
     created = await _create(client, admin, username="persist.check", email="pc@sbdma.gov.ye")
     uid = created.json()["data"]["id"]
 
-    limiter.reset()
+    await limiter.clear()
     await client.post(
         "/api/v1/auth/login", json={"username": "persist.check", "password": "wrong-pass-9"}
     )

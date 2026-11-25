@@ -312,7 +312,7 @@ async def test_failed_second_factor_counts_toward_the_lockout(client, prepared_d
     await _enrol(client, session)
 
     for _ in range(6):
-        limiter.reset()
+        await limiter.clear()
         await client.post(
             "/api/v1/auth/login",
             json={"username": "analyst.phys", "password": PASSWORDS["analyst.phys"], "totp_code": "000000"},

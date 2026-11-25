@@ -128,7 +128,13 @@ async def client(prepared_db: None) -> AsyncIterator:
     # The sign-in route allows 5 attempts per minute per IP and every request in
     # the test suite comes from the same synthetic client address. Without a
     # reset, one test's failed logins would 429 the next test.
-    limiter.reset()
+    #
+    # `clear()` and not `reset()`: reset only clears the in-process window, so on a
+    # runner where REDIS_URL is set (i.e. the shared window in `auto` mode) the
+    # budget carried across tests and CI spent the whole suite answering 429 —
+    # 24 tests errored and measured coverage fell to 55%. Local runs without a
+    # broker could not see it.
+    await limiter.clear()
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", timeout=30
     ) as ac:
@@ -211,7 +217,7 @@ async def login(client, username: str) -> dict:
     # intention separate from the limiter's accounting.
     from app.api.middleware import limiter as _limiter
 
-    _limiter.reset()
+    await _limiter.clear()
 
     first = await client.post("/api/v1/auth/login", json=payload)
 
