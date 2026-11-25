@@ -329,6 +329,40 @@ export interface ServerManagedUser {
   created_at: string;
 }
 
+export interface ServerNotification {
+  id: string;
+  channel: string;
+  severity: 'info' | 'warning' | 'critical' | string;
+  title_ar: string;
+  title_en: string | null;
+  body_ar: string | null;
+  payload: {
+    kind?: string;
+    code?: string;
+    due_date?: string;
+    days_remaining?: number;
+    window?: string;
+    entity_id?: string;
+  } | null;
+  created_at: string | null;
+  sent_at: string | null;
+  read_at: string | null;
+}
+
+export interface ServerWorkerStatus {
+  broker_configured: boolean;
+  broker: string;
+  scheduled: { name: string; task: string; schedule: string }[];
+  registered_tasks: string[];
+  note_ar: string;
+  note_en: string;
+}
+
+export interface ServerKpiReportResult {
+  period: string;
+  documents: { scope: string; document_id: string; path: string; bytes: number; sha256: string }[];
+}
+
 export interface ServerDeviation {
   id: string;
   reference: string;
@@ -621,6 +655,36 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),
+
+  // ── notifications & background jobs ───────────────────────────────────── //
+  // A notice is addressed to a person, not to a department: these calls carry no
+  // scope filter because the server derives the scope from the session.
+  notifications: (params: { unreadOnly?: boolean; limit?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (params.unreadOnly) search.set('unread_only', 'true');
+    if (params.limit) search.set('limit', String(params.limit));
+    const suffix = search.toString() ? `?${search}` : '';
+    return request<ServerNotification[]>(`/notifications${suffix}`);
+  },
+  unreadNotificationCount: () =>
+    request<{ unread: number }>('/notifications/unread-count'),
+  markNotificationRead: (id: string) =>
+    request<{ id: string; marked: boolean }>(`/notifications/${id}/read`, { method: 'POST' }),
+  duePreview: () =>
+    request<{ due_items: number; created: number; skipped_duplicates: number; dry_run: boolean }>(
+      '/notifications/due-preview',
+    ),
+  generateNotifications: () =>
+    request<{ due_items: number; created: number; skipped_duplicates: number }>(
+      '/notifications/generate',
+      { method: 'POST' },
+    ),
+  runKpiReport: (forDate?: string) =>
+    request<ServerKpiReportResult>(
+      `/reports/kpi/run${forDate ? `?for_date=${forDate}` : ''}`,
+      { method: 'POST' },
+    ),
+  workerStatus: () => request<ServerWorkerStatus>('/worker/status'),
 
   // ── OOS deviations ────────────────────────────────────────────────────── //
   // Three phases, three permissions. The server refuses a phase to a principal

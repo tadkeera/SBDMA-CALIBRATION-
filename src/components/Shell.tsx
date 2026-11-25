@@ -19,6 +19,7 @@ import {
   UserCog,
   Wrench,
   AlertTriangle,
+  BellRing,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
 import { PasswordChangeGate } from './PasswordChangeGate';
@@ -41,6 +42,13 @@ const NAV = [
     perm: 'instruments.view' as const,
   },
   { href: '/users', ar: 'إدارة المستخدمين', en: 'Users', icon: UserCog, perm: 'users.manage' as const },
+  {
+    href: '/notifications',
+    ar: 'الإشعارات والمهام',
+    en: 'Notices & Jobs',
+    icon: BellRing,
+    perm: 'instruments.view' as const,
+  },
   { href: '/audit', ar: 'سجل التدقيق', en: 'Audit Trail', icon: ScrollText, perm: 'audit.view' as const },
 ];
 
@@ -50,11 +58,36 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [backend, setBackend] = useState<'checking' | 'up' | 'down'>('checking');
+  const [unread, setUnread] = useState(0);
 
   // the navigation is filtered by the permissions the server granted, not by a
   // client-side role table
   const allowed = NAV.filter((item) => can(item.perm));
   const isLogin = path === '/login';
+
+  // Unread notices, polled. A due-date warning that only exists behind a menu is a
+  // warning most people will not read, so the count is part of the header.
+  useEffect(() => {
+    if (!user) {
+      setUnread(0);
+      return;
+    }
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const { unread: count } = await api.unreadNotificationCount();
+        if (!cancelled) setUnread(count);
+      } catch {
+        if (!cancelled) setUnread(0);
+      }
+    };
+    void tick();
+    const timer = setInterval(tick, 120_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
+  }, [user, path]);
 
   useEffect(() => {
     let cancelled = false;
@@ -207,6 +240,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
                   ? t('الخادم غير متاح', 'Server offline')
                   : t('جارٍ الفحص', 'Checking')}
             </span>
+
+            <button
+              className="btn btn-ghost relative px-2 py-1.5"
+              onClick={() => router.push('/notifications')}
+              title={t('الإشعارات غير المقروءة', 'Unread notices')}
+              aria-label={t('الإشعارات غير المقروءة', 'Unread notices')}
+            >
+              <BellRing size={15} />
+              {unread > 0 && (
+                <span
+                  className="absolute -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[9.5px] font-bold"
+                  style={{ background: 'var(--fail)', color: '#fff' }}
+                >
+                  {unread > 99 ? '99+' : unread}
+                </span>
+              )}
+            </button>
 
             <div className="relative">
               <button

@@ -25,9 +25,9 @@ Incubators, Stability Chambers).
 | الرسوم العلمية | Apache ECharts (انحدار OLS، بواقي، GPV، أطياف، مخططات تحكم) |
 | محرك الحسابات (المتصفح) | AST Parser آمن + `decimal.js` — **بدون `eval()`** |
 | محرك الحسابات (الخادم) | Python 3.12 · `decimal.Decimal` · AST مُتحقق منه — **بدون `eval()`** |
-| خادم الإنتاج | FastAPI 0.165 (Async) · 58 عملية على 45 مساراً في `/api/v1` · Argon2id + JWT · تقارير PDF/Excel · مرفقات موقّعة بالبصمة |
+| خادم الإنتاج | FastAPI 0.165 (Async) · 65 عملية على 58 مساراً في `/api/v1` · Argon2id + JWT · تقارير PDF/Excel · مرفقات موقّعة بالبصمة |
 | طبقة الحوكمة في القاعدة | 25 Trigger: تدقيق ملحق فقط، قفل النتائج، قفل التشغيل، حاجز الانتهاء، حُرّاس الانحرافات OOS، `updated_at` |
-| الطوابير والكاش | Redis 7 · Celery Worker/Beat |
+| الطوابير والكاش | Redis 8 · Celery Worker/Beat — إشعارات انتهاء المعايرة (يومياً) وتقرير مؤشرات أسبوعي، مُتحقَّق منهما بتشغيل مهام حقيقية |
 | البنية التحتية | Docker Compose · Kubernetes (HPA + PDB + Rolling Updates) · Nginx |
 
 ---

@@ -16,13 +16,24 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.logging import request_id_ctx
 from app.models.audit import AuditLog
 
 GENESIS_HASH = "0" * 64
+
+#: Advisory lock key for the audit chain. Any writer that appends must hold this
+#: for the rest of its transaction, otherwise two writers can read the same head,
+#: both chain onto it, and fork the chain into two branches that each verify alone
+#: and fail together.
+AUDIT_CHAIN_LOCK_KEY = 0x5BD3A0D1
+
+#: How long a writer waits for the lock before giving up. Appends are microsecond
+#: operations, so contention is genuinely exceptional and a timeout is a real
+#: error rather than a reason to write an unchained row.
+AUDIT_CHAIN_LOCK_TIMEOUT = "10s"
 
 
 def _canonical(value: Any) -> str:
@@ -71,12 +82,35 @@ class AuditService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
 
-    async def _head_hash(self) -> str:
-        row = await self.session.execute(
-            select(AuditLog.hash).order_by(AuditLog.at.desc(), AuditLog.id.desc()).limit(1)
+    async def _head(self) -> tuple[str, int]:
+        """Serialise and return (head hash, next chain position).
+
+        The advisory lock is transaction-scoped: it is released by COMMIT or
+        ROLLBACK, so the caller *must* commit for the append to publish. Taking it
+        here rather than in ``record`` means the head cannot move between the read
+        and the insert.
+        """
+        await self.session.execute(
+            text("SELECT set_config('lock_timeout', :t, true)"), {"t": AUDIT_CHAIN_LOCK_TIMEOUT}
         )
-        value = row.scalar_one_or_none()
-        return value or GENESIS_HASH
+        await self.session.execute(
+            text("SELECT pg_advisory_xact_lock(:k)"), {"k": AUDIT_CHAIN_LOCK_KEY}
+        )
+        row = (
+            await self.session.execute(
+                select(AuditLog.hash, AuditLog.chain_seq)
+                .order_by(AuditLog.chain_seq.desc().nullslast())
+                .limit(1)
+            )
+        ).first()
+        if row is None:
+            return GENESIS_HASH, 1
+        head_hash, head_seq = row
+        return head_hash or GENESIS_HASH, (head_seq or 0) + 1
+
+    async def _head_hash(self) -> str:
+        head, _ = await self._head()
+        return head
 
     async def record(
         self,
@@ -94,7 +128,7 @@ class AuditService:
         ip_address: str | None = None,
     ) -> AuditLog:
         at = datetime.now(timezone.utc)
-        prev_hash = await self._head_hash()
+        prev_hash, chain_seq = await self._head()
         at_iso = at.isoformat()
         digest = compute_hash(
             prev_hash=prev_hash,
@@ -124,6 +158,7 @@ class AuditService:
             request_id=request_id_ctx.get(),
             prev_hash=prev_hash,
             hash=digest,
+            chain_seq=chain_seq,
         )
         self.session.add(entry)
         await self.session.flush()
@@ -131,7 +166,13 @@ class AuditService:
 
     @staticmethod
     async def verify_chain(session: AsyncSession, *, limit: int | None = None) -> dict[str, Any]:
-        stmt = select(AuditLog).order_by(AuditLog.at.asc(), AuditLog.id.asc())
+        # Order by the chain position, not by wall-clock time: the hash covers
+        # ``at`` with microsecond precision, but two rows can still share a
+        # timestamp, and ordering those by a random UUID reported honest entries as
+        # a broken chain.
+        stmt = select(AuditLog).order_by(
+            AuditLog.chain_seq.asc().nullsfirst(), AuditLog.at.asc(), AuditLog.id.asc()
+        )
         if limit:
             stmt = stmt.limit(limit)
         rows = (await session.execute(stmt)).scalars().all()

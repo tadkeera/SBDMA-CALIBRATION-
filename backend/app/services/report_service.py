@@ -32,8 +32,11 @@ from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
+    BaseDocTemplate,
+    Frame,
     Image,
     KeepTogether,
+    PageTemplate,
     PageBreak,
     Paragraph,
     SimpleDocTemplate,
@@ -186,13 +189,19 @@ def _styles() -> dict[str, ParagraphStyle]:
     }
 
 
-def _header_table(st: dict[str, ParagraphStyle], subtitle: str) -> Table:
+def _header_table(
+    st: dict[str, ParagraphStyle],
+    subtitle: str,
+    *,
+    title_en: str = "Calibration Certificate",
+    title_ar: str = "شهادة معايرة",
+) -> Table:
     logo = Paragraph(
         "<b>SBDMA</b><br/><font size=6.5>Laboratory Calibration &amp; OQ Platform</font>",
         ParagraphStyle("logo", parent=st["cellb"], fontSize=13, leading=15, textColor=colors.white),
     )
     titles = [
-        Paragraph(mix("Calibration Certificate", "شهادة معايرة"), st["title"]),
+        Paragraph(mix(title_en, title_ar), st["title"]),
         Paragraph(subtitle, st["sub"]),
     ]
     table = Table([[logo, titles]], colWidths=[38 * mm, None])
@@ -728,3 +737,167 @@ def build_run_xlsx(payload: dict[str, Any]) -> bytes:
 def document_id(kind: str, run_code: str) -> str:
     stamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
     return f"SBDMA-{kind}-{run_code}-{stamp}-{uuid.uuid4().hex[:6].upper()}"
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# KPI report — the scheduled weekly register
+# ══════════════════════════════════════════════════════════════════════════════
+
+
+def build_kpi_pdf(payload: dict[str, Any]) -> bytes:
+    """Weekly KPI register as a PDF.
+
+    Deliberately shaped like the certificate: same header, same footer with the
+    document id and page count, same font handling. A QA officer who trusts one
+    document should not have to learn a second layout to trust the other.
+    """
+    st = _styles()
+    buf = io.BytesIO()
+    doc = BaseDocTemplate(
+        buf,
+        pagesize=A4,
+        leftMargin=14 * mm,
+        rightMargin=14 * mm,
+        topMargin=14 * mm,
+        bottomMargin=16 * mm,
+        title=mix("KPI report", "تقرير مؤشرات الأداء"),
+        author="SBDMA",
+    )
+
+    def on_page(canvas, doc_):  # noqa: ANN001
+        canvas.saveState()
+        canvas.setFont(FONT_REGULAR if HAS_ARABIC_FONT else "Helvetica", 7)
+        canvas.setFillColor(colors.HexColor("#8a949e"))
+        canvas.drawString(14 * mm, 9 * mm, payload["document_id"])
+        canvas.drawRightString(
+            A4[0] - 14 * mm,
+            9 * mm,
+            f"Page {doc_.page} of {payload['page_total']}  ·  {payload['generated_at']}",
+        )
+        canvas.restoreState()
+
+    frames = [Frame(14 * mm, 16 * mm, A4[0] - 28 * mm, A4[1] - 30 * mm, id="main")]
+    doc.addPageTemplates([PageTemplate(id="kpi", frames=frames, onPage=on_page)])
+
+    story: list[Any] = []
+    story.append(
+        _header_table(
+            st,
+            f"{payload['scope_label']} · {payload['period_label']}",
+            title_en="KPI Report",
+            title_ar="تقرير مؤشرات الأداء",
+        )
+    )
+    story.append(Spacer(1, 5 * mm))
+
+    def section(title_en: str, title_ar: str) -> None:
+        story.append(
+            Paragraph(
+                f'<font color="#173a5e"><b>{title_en}</b></font> — {ar(title_ar)}',
+                ParagraphStyle("kpi-sect", parent=st["h2"], fontSize=10.5, spaceBefore=8, spaceAfter=3),
+            )
+        )
+
+    def metrics_table(rows: list[tuple[str, str, Any, str]]) -> Table:
+        data = [
+            [
+                Paragraph(
+                    f'<font color="white">{mix("Metric", "المؤشر")}</font>', st["cellb"]
+                ),
+                Paragraph(
+                    f'<font color="white">{mix("Value", "القيمة")}</font>', st["cellb"]
+                ),
+                Paragraph(
+                    f'<font color="white">{mix("Basis for the figure", "أساس الرقم")}</font>',
+                    st["cellb"],
+                ),
+            ]
+        ]
+        for label_en, label_ar, value, basis in rows:
+            data.append([
+                Paragraph(f"{label_en} — {ar(label_ar)}", st["cell"]),
+                Paragraph(f"<b>{_fmt(value) if value is not None else '—'}</b>", st["cellb"]),
+                Paragraph(basis, st["cell"]),
+            ])
+        table = Table(data, colWidths=[70 * mm, 34 * mm, None], repeatRows=1)
+        table.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), BRAND),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#dfe5ea")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("ROWBACKGROUNDS", (0, 1), (-1, -1), [colors.white, colors.HexColor("#f7f9fb")]),
+                ]
+            )
+        )
+        return table
+
+    inst = payload["instruments"]
+    runs = payload["runs"]
+    devs = payload["deviations"]
+    comp = payload["compliance"]
+
+    section("Instruments", "الأجهزة")
+    story.append(
+        metrics_table(
+            [
+                ("Registered instruments", "أجهزة مسجلة", inst["total"], "non-deleted instruments"),
+                ("Overdue calibration", "متأخرة المعايرة", inst["overdue"], "next_due_date < today"),
+                ("Due within 30 days", "مستحقة خلال 30 يوماً", inst["due_within_30_days"], "next_due_date ≤ today+30"),
+            ]
+        )
+    )
+
+    section("Calibration runs", "تشغيلات المعايرة")
+    story.append(
+        metrics_table(
+            [
+                ("Completed runs", "تشغيلات مكتملة", runs["completed"], "PASS + FAIL + UNDER_REVIEW"),
+                ("Passed", "مطابقة", runs["passed"], "overall_status = PASS"),
+                ("Failed", "غير مطابقة", runs["failed"], "overall_status = FAIL"),
+                ("Pass rate", "معدل النجاح",
+                 f"{runs['pass_rate_percent']}%" if runs["pass_rate_percent"] is not None else None,
+                 "passed ÷ completed — no synthetic value when completed = 0"),
+                ("Awaiting QA approval", "بانتظار اعتماد QA", runs["pending_qa_approval"], "unlocked & PASS/UNDER_REVIEW"),
+                ("Approved & locked", "معتمدة ومقفلة", runs["locked"], "is_locked = true"),
+                ("Mean approval time (days)", "متوسط زمن الاعتماد", runs["mean_approval_days"], "qa_approved_at − started_at"),
+            ]
+        )
+    )
+
+    section("Deviations (OOS)", "الانحرافات خارج المواصفة")
+    story.append(
+        metrics_table(
+            [
+                ("Open deviations", "انحرافات مفتوحة", devs["open"], "status not CLOSED/CANCELLED"),
+                ("Open critical", "مفتوحة حرجة", devs["critical_open"], "classification = CRITICAL"),
+            ]
+        )
+    )
+
+    section("Compliance", "الامتثال")
+    story.append(
+        metrics_table(
+            [
+                ("Expired reference equipment", "أدوات مرجعية منتهية", comp["expired_reference_equipment"], "expiry_date < today"),
+                ("Expired reference standards", "معايير مرجعية منتهية", comp["expired_reference_standards"], "expiry_date < today"),
+                ("Open maintenance tickets", "تذاكر صيانة مفتوحة", comp["open_maintenance_tickets"], "OPEN or IN_PROGRESS"),
+                ("D₂ lamp alerts", "تنبيهات مصباح D₂", comp["d2_lamp_alerts"], "lamp hours ≥ 1800"),
+            ]
+        )
+    )
+
+    story.append(Spacer(1, 5 * mm))
+    story.append(
+        Paragraph(
+            ar(
+                "جميع القيم محسوبة من صفوف قاعدة البيانات لحظة التوليد، ولا تُدخل يدوياً. "
+                "التقرير مُدرج في سجل التدقيق بمعرّفه وبصمته."
+            ),
+            ParagraphStyle("kpi-note", parent=st["sub"], fontSize=8, textColor=colors.HexColor("#6b7488")),
+        )
+    )
+
+    doc.build(story)
+    return buf.getvalue()

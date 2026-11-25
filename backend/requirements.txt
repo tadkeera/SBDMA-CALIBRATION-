@@ -11,7 +11,9 @@ argon2-cffi==25.1.0
 psycopg[binary]==3.2.4
 email-validator==2.2.0
 python-multipart==0.0.20
-redis==5.2.1
+# redis-py 6.1+ is required by Celery 5.4's transport — the previous 5.2.1 pin
+# could not run a worker at all, which went unnoticed because redis was optional.
+redis==6.4.0
 celery==5.4.0
 numpy==2.2.1
 scipy==1.15.0

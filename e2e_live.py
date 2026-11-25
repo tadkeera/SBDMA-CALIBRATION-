@@ -447,6 +447,27 @@ def main() -> int:
             failures.extend(f"deviations page error: {e}" for e in errors)
         browser.close()
 
+    # ── notices & jobs: the page a role with audit.view can actually use ────
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_context(base_url=BASE).new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        sign_in_with_mfa(page, QA[0], QA[1])
+        page.goto(f"{BASE}/notifications")
+        page.wait_for_timeout(2500)
+        body = page.inner_text("body")
+        # the schedule panel must show the task names the worker registers
+        if "sbdma.notify.calibration_due" not in body:
+            failures.append("the scheduled-jobs panel did not list the notification task")
+        else:
+            print("worker schedule visible in the UI", flush=True)
+        if "داخل التطبيق" not in body and "In-app" not in body:
+            failures.append("the page does not state the in-app transport")
+        if errors:
+            failures.extend(f"notifications page error: {e}" for e in errors)
+        browser.close()
+
     # the duplicate toast seen in the screenshots is cosmetic; the real check is
     # that no unexpected console error fired
     unexpected = [e for e in console_errors if "429" not in e and "401" not in e]
