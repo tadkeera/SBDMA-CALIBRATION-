@@ -7,6 +7,16 @@ import pytest
 from tests.conftest import PASSWORDS
 
 
+async def _login_with(client, username: str, password: str) -> dict:
+    """Sign in with an explicit password (not the seeded one)."""
+    response = await client.post(
+        "/api/v1/auth/login", json={"username": username, "password": password}
+    )
+    assert response.status_code == 200, response.text
+    token = response.json()["data"]["access_token"]
+    return {"hash": {"Authorization": f"Bearer {token}"}, "data": response.json()["data"]}
+
+
 async def test_health_endpoints_are_public(client):
     live = await client.get("/api/v1/health/live")
     assert live.status_code == 200
@@ -111,17 +121,25 @@ async def test_change_password_revokes_all_sessions(client, auth):
     )
     assert response.status_code == 200, response.text
 
+    # The change revoked every session, so the token used above is dead: it must
+    # not be usable again, not even to undo the change. Re-authenticate with the
+    # new password instead of reusing the revoked one.
+    stale = await client.get("/api/v1/auth/me", headers=session["hash"])
+    assert stale.status_code in (401, 403)
+
+    restored = await _login_with(client, "technician", "N3w-Tech-Pass!2026")
+
     # restore so other tests keep working
     back = await client.post(
         "/api/v1/auth/change-password",
-        headers=session["hash"],
+        headers=restored["hash"],
         json={
             "current_password": "N3w-Tech-Pass!2026",
             "new_password": PASSWORDS["technician"],
             "reason": "استعادة كلمة المرور بعد الاختبار",
         },
     )
-    assert back.status_code == 200
+    assert back.status_code == 200, back.text
 
 
 async def test_weak_new_password_is_rejected(client, auth):

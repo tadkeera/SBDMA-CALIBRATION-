@@ -16,9 +16,11 @@ import {
   ScrollText,
   ShieldCheck,
   Sun,
+  UserCog,
   Wrench,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
+import { PasswordChangeGate } from './PasswordChangeGate';
 import { ROLE_LABELS } from '@/core/types';
 import { DEV_CREDIT_URL } from '@/core/constants';
 import { api, ApiError } from '@/core/api/client';
@@ -29,6 +31,7 @@ const NAV = [
   { href: '/qa', ar: 'ضمان الجودة والاعتماد', en: 'Quality Assurance', icon: ShieldCheck, perm: 'calibration.review' as const },
   { href: '/engineering', ar: 'الصيانة والهندسة', en: 'Engineering', icon: Wrench, perm: 'maintenance.manage' as const },
   { href: '/control', ar: 'الإدارة المركزية', en: 'Central Control', icon: Cog, perm: 'settings.manage' as const },
+  { href: '/users', ar: 'إدارة المستخدمين', en: 'Users', icon: UserCog, perm: 'users.manage' as const },
   { href: '/audit', ar: 'سجل التدقيق', en: 'Audit Trail', icon: ScrollText, perm: 'audit.view' as const },
 ];
 
@@ -68,6 +71,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
   }, [ready, isLogin, session, router]);
 
   if (isLogin) return <>{children}</>;
+
+  // The server blocks everything but identity + password change for an account
+  // still holding an administrator-issued password. Showing the gate here keeps
+  // the user from wandering into 403s with no way forward.
+  if (session?.must_change_password) return <PasswordChangeGate />;
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--surface-2)' }}>

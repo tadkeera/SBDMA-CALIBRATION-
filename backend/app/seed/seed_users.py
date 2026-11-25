@@ -2,7 +2,14 @@
 
 Passwords are taken from environment variables when provided; otherwise a
 random password is generated and printed once. A hard-coded default password is
-never written, and every seeded account is flagged must_change_password.
+never written.
+
+The ``must_change_password`` flag is honoured by the API: a flagged principal may
+only read its own identity and change the password. Seeded accounts therefore
+default to *not* flagged, so a development instance is usable immediately. Set
+``SBDMA_SEED_FORCE_PASSWORD_CHANGE=1`` to seed them the way a real deployment
+would hand them out — the first sign-in then only opens the change-password
+screen.
 """
 
 from __future__ import annotations
@@ -16,6 +23,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.security import hash_password
 from app.models.rbac import LabDepartment, Role, User
+
+FORCE_PASSWORD_CHANGE = os.environ.get("SBDMA_SEED_FORCE_PASSWORD_CHANGE", "0") == "1"
 
 SEED_USERS = (
     ("admin", "admin@sbdma.gov.ye", "مدير النظام", "System Administrator", "QA", "SUPER_ADMIN", "SBDMA_ADMIN_PASSWORD"),
@@ -50,7 +59,8 @@ async def seed_users(session: AsyncSession) -> dict[str, int]:
         if role_code not in roles:
             raise RuntimeError(f"role {role_code} must be seeded before users")
         password = os.environ.get(env_key)
-        if not password:
+        password_was_generated = not password
+        if password_was_generated:
             password = secrets.token_urlsafe(18)
             generated.append(f"{username}\t{password}")
         role = await session.get(Role, role_code)
@@ -63,7 +73,9 @@ async def seed_users(session: AsyncSession) -> dict[str, int]:
             full_name_en=name_en,
             password_hash=hash_password(password),
             is_active=True,
-            must_change_password=True,
+            # an environment-supplied password is a deliberate dev choice; a
+            # generated one was never seen by the operator and must be replaced
+            must_change_password=FORCE_PASSWORD_CHANGE or password_was_generated,
         )
         user.roles = [role]
         session.add(user)

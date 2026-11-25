@@ -309,6 +309,35 @@ export interface ServerHealth {
 
 // ──────────────────────────────── endpoints ──────────────────────────────── //
 
+export interface ServerManagedUser {
+  id: string;
+  username: string;
+  email: string;
+  full_name_ar: string;
+  full_name_en: string;
+  department_id: string | null;
+  roles: string[];
+  role_ranks: number[];
+  is_active: boolean;
+  must_change_password: boolean;
+  is_locked: boolean;
+  locked_until: string | null;
+  failed_login_count: number;
+  last_login_at: string | null;
+  totp_enabled: boolean;
+  created_at: string;
+}
+
+export interface ServerRoleOption {
+  code: string;
+  name_ar: string;
+  name_en: string;
+  rank: number;
+  permissions: string[];
+  /** false when the role outranks you or would break separation of duties */
+  assignable: boolean;
+}
+
 export const api = {
   // auth
   login: (username: string, password: string) =>
@@ -480,6 +509,63 @@ export const api = {
       body: form,
     });
   },
+
+  // user administration (requires users.manage)
+  users: (params: { q?: string; active?: boolean } = {}) => {
+    const search = new URLSearchParams();
+    if (params.q) search.set('q', params.q);
+    if (params.active !== undefined) search.set('active', String(params.active));
+    const suffix = search.toString() ? `?${search}` : '';
+    return request<ServerManagedUser[]>(`/users${suffix}`);
+  },
+  roleOptions: () => request<ServerRoleOption[]>('/users/roles'),
+  /**
+   * Creating an identity is a GxP event, so the reason travels as a query
+   * parameter and is stored in the audit chain verbatim.
+   */
+  createUser: (body: {
+    username: string;
+    email: string;
+    full_name_ar: string;
+    full_name_en: string;
+    password: string;
+    roles: string[];
+    department_id?: string | null;
+    reason: string;
+  }) => {
+    const { reason, ...payload } = body;
+    return request<ServerManagedUser>(`/users?reason=${encodeURIComponent(reason)}`, {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+  updateUser: (
+    userId: string,
+    changes: {
+      roles?: string[];
+      is_active?: boolean;
+      department_id?: string | null;
+      email?: string;
+      full_name_ar?: string;
+      full_name_en?: string;
+      reason: string;
+    },
+  ) => request<ServerManagedUser>(`/users/${userId}`, { method: 'PATCH', body: JSON.stringify(changes) }),
+  resetUserPassword: (userId: string, newPassword: string, reason: string) =>
+    request<{ user_id: string; must_change_password: boolean }>(`/users/${userId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ new_password: newPassword, reason }),
+    }),
+  unlockUser: (userId: string, reason: string) =>
+    request<{ user_id: string; is_locked: boolean }>(`/users/${userId}/unlock`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+  revokeUserSessions: (userId: string, reason: string) =>
+    request<{ user_id: string; revoked: number }>(`/users/${userId}/revoke-sessions`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
 };
 
 

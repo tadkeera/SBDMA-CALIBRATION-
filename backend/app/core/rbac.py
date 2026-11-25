@@ -95,6 +95,9 @@ class Principal:
     department_id: UUID | None
     permissions: set[str] = field(default_factory=set)
     session_id: str | None = None
+    #: True while the account still uses an administrator-issued password. Such a
+    #: principal may read its own identity and change the password, nothing else.
+    must_change_password: bool = False
 
     @classmethod
     def build(
@@ -105,6 +108,7 @@ class Principal:
         roles: list[str],
         department_id: UUID | None,
         session_id: str | None = None,
+        must_change_password: bool = False,
     ) -> "Principal":
         perms: set[str] = set()
         for role in roles:
@@ -116,6 +120,7 @@ class Principal:
             department_id=department_id,
             permissions=perms,
             session_id=session_id,
+            must_change_password=must_change_password,
         )
 
     # --- capability checks -------------------------------------------------

@@ -91,6 +91,9 @@ async def client(prepared_db: None) -> AsyncIterator:
     from app.api.middleware import limiter
     from app.main import app
 
+    # The sign-in route allows 5 attempts per minute per IP and every request in
+    # the test suite comes from the same synthetic client address. Without a
+    # reset, one test's failed logins would 429 the next test.
     limiter.reset()
     async with AsyncClient(
         transport=ASGITransport(app=app), base_url="http://test", timeout=30

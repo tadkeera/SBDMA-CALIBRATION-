@@ -58,6 +58,9 @@ class AuthService:
                 reason="unknown username",
                 ip_address=ip,
             )
+            # Commit before raising: the request session is rolled back on
+            # exception, and an unrecorded denial is not an audit trail.
+            await self.session.commit()
             raise AuthenticationError()
 
         if user.locked_until and user.locked_until > now:
@@ -72,6 +75,7 @@ class AuthService:
                 reason="account disabled",
                 ip_address=ip,
             )
+            await self.session.commit()
             raise AuthenticationError(
                 message_ar="الحساب معطل — راجع مسؤول النظام",
                 message_en="Account disabled — contact the system administrator",
@@ -99,7 +103,10 @@ class AuthService:
                 reason="wrong password",
                 ip_address=ip,
             )
-            await self.session.flush()
+            # Commit (not flush): get_session rolls back on exception, so a
+            # flushed-but-not-committed counter would be discarded and the
+            # account lockout could never engage. See tests/test_api_users.py.
+            await self.session.commit()
             raise AuthenticationError()
 
         if rehash:
@@ -142,18 +149,28 @@ class AuthService:
         user_agent: str | None,
     ) -> dict[str, str]:
         settings = self.settings
+        # The access token carries the id of the refresh-session row it belongs to.
+        # Without this link, revoking a session would leave the already-issued
+        # access tokens working until they expire — a "revoked" session that is
+        # still usable is worse than no revocation at all.
+        refresh_session_id = uuid.uuid4()
         access = create_token(
             str(user.id),
             "access",
             role=principal.primary_role,
             department_id=str(user.department_id) if user.department_id else None,
-            extra={"roles": principal.roles, "sid": str(uuid.uuid4())},
+            extra={"roles": principal.roles, "sid": str(refresh_session_id)},
         )
-        refresh = create_token(str(user.id), "refresh", role=principal.primary_role)
+        refresh = create_token(
+            str(user.id),
+            "refresh",
+            role=principal.primary_role,
+            extra={"sid": str(refresh_session_id)},
+        )
         now = datetime.now(timezone.utc)
         self.session.add(
             RefreshSession(
-                id=uuid.uuid4(),
+                id=refresh_session_id,
                 user_id=user.id,
                 token_hash=sha256_hex(refresh),
                 issued_at=now,
@@ -276,6 +293,7 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
         username=user.username,
         roles=roles,
         department_id=user.department_id,
+        must_change_password=user.must_change_password,
     )
 
 

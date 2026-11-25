@@ -74,6 +74,8 @@ class CreateUserRequest(BaseModel):
     email: EmailStr
     full_name_ar: str = Field(min_length=3, max_length=190)
     full_name_en: str = Field(min_length=3, max_length=190)
-    password: str = Field(min_length=12, max_length=256)
+    # strength is checked by security.password_strength_errors so the client gets
+    # every failed rule at once, not only the first
+    password: str = Field(min_length=1, max_length=256)
     department_id: uuid.UUID | None = None
     roles: list[str] = Field(min_length=1)

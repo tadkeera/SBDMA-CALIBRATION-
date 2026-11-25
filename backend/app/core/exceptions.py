@@ -73,6 +73,13 @@ class AccountLockedError(AppError):
     message_en = "Account temporarily locked after repeated failed sign-ins"
 
 
+class PasswordChangeRequiredError(AppError):
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "PASSWORD_CHANGE_REQUIRED"
+    message_ar = "يجب تغيير كلمة المرور المؤقتة قبل استخدام النظام"
+    message_en = "You must change the temporary password before using the system"
+
+
 class ValidationFailedError(AppError):
     status_code = status.HTTP_422_UNPROCESSABLE_ENTITY
     code = "VALIDATION_FAILED"
