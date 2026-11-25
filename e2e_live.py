@@ -122,6 +122,11 @@ def sign_in_with_mfa(page, username: str, password: str) -> None:
       3. the enrolment screen appeared    → the role mandates a factor and this
                                             account has none yet
     """
+    # A fresh context opens on "/", which the app bounces to /login once it
+    # discovers there is no session. Navigating straight there avoids racing that
+    # redirect — and after a user switch the login form is what we need anyway.
+    if page.locator("#username").count() == 0:
+        page.goto(f"{BASE}/login")
     page.wait_for_selector("#username", timeout=20000)
     page.fill("#username", username)
     page.fill("#password", password)
@@ -419,6 +424,27 @@ def main() -> int:
         else:
             failures.append("the certificate button stayed disabled after approval")
 
+        browser.close()
+
+    # ── OOS deviations: the register must be reachable and populated ────────
+    # The specific loop (raise → investigate → close) is exercised over the API
+    # by the test suite; what a browser adds is evidence the page actually
+    # renders for the role that owns it, with no console error.
+    with sync_playwright() as playwright:
+        browser = playwright.chromium.launch()
+        page = browser.new_context(base_url=BASE).new_page()
+        errors: list[str] = []
+        page.on("pageerror", lambda exc: errors.append(str(exc)))
+        sign_in_with_mfa(page, QA[0], QA[1])
+        page.goto(f"{BASE}/deviations")
+        page.wait_for_timeout(2500)
+        body = page.inner_text("body")
+        if "DEV-" not in body and "لا توجد انحرافات" not in body:
+            failures.append("the deviations register rendered neither rows nor its empty state")
+        else:
+            print("deviations register rendered for QA", flush=True)
+        if errors:
+            failures.extend(f"deviations page error: {e}" for e in errors)
         browser.close()
 
     # the duplicate toast seen in the screenshots is cosmetic; the real check is

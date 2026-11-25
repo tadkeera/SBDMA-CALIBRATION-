@@ -1,5 +1,6 @@
 """ORM models. Importing this package registers all tables on the metadata."""
 
+from app.models.deviations import Deviation
 from app.models.assets import Instrument, ReferenceEquipment, ReferenceStandard
 from app.models.audit import AuditLog, Notification, SystemSetting
 from app.models.base import Base

@@ -329,6 +329,31 @@ export interface ServerManagedUser {
   created_at: string;
 }
 
+export interface ServerDeviation {
+  id: string;
+  reference: string;
+  run_id: string;
+  run_code: string | null;
+  instrument_id: string;
+  status: string;
+  classification: string;
+  title: string;
+  description: string;
+  root_cause_category: string | null;
+  root_cause: string | null;
+  immediate_action: string | null;
+  capa_action: string | null;
+  capa_notes: string | null;
+  closure_notes: string | null;
+  retest_run_id: string | null;
+  raised_by: string;
+  raised_at: string | null;
+  investigated_by: string | null;
+  investigated_at: string | null;
+  closed_by: string | null;
+  closed_at: string | null;
+}
+
 export interface ServerRoleOption {
   code: string;
   name_ar: string;
@@ -593,6 +618,56 @@ export const api = {
     }),
   revokeUserSessions: (userId: string, reason: string) =>
     request<{ user_id: string; revoked: number }>(`/users/${userId}/revoke-sessions`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
+    }),
+
+  // ── OOS deviations ────────────────────────────────────────────────────── //
+  // Three phases, three permissions. The server refuses a phase to a principal
+  // who lacks its permission, so the UI's job is to show the next step and the
+  // reason it may be refused — not to decide whether it is allowed.
+  deviations: (params: { status?: string; run_id?: string } = {}) => {
+    const search = new URLSearchParams();
+    if (params.status) search.set('status', params.status);
+    if (params.run_id) search.set('run_id', params.run_id);
+    const suffix = search.toString() ? `?${search}` : '';
+    return request<ServerDeviation[]>(`/deviations${suffix}`);
+  },
+  deviation: (deviationId: string) => request<ServerDeviation>(`/deviations/${deviationId}`),
+  raiseDeviation: (body: {
+    run_id: string;
+    title: string;
+    description: string;
+    classification: string;
+  }) => request<ServerDeviation>('/deviations', { method: 'POST', body: JSON.stringify(body) }),
+  startInvestigation: (deviationId: string, plan: string) =>
+    request<ServerDeviation>(`/deviations/${deviationId}/investigate/start`, {
+      method: 'POST',
+      body: JSON.stringify({ plan }),
+    }),
+  recordInvestigation: (
+    deviationId: string,
+    body: { root_cause_category: string; root_cause: string; immediate_action: string },
+  ) =>
+    request<ServerDeviation>(`/deviations/${deviationId}/investigate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  closeDeviation: (
+    deviationId: string,
+    body: {
+      capa_action: string;
+      capa_notes: string;
+      closure_notes: string;
+      retest_run_id?: string | null;
+    },
+  ) =>
+    request<ServerDeviation>(`/deviations/${deviationId}/close`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  cancelDeviation: (deviationId: string, reason: string) =>
+    request<ServerDeviation>(`/deviations/${deviationId}/cancel`, {
       method: 'POST',
       body: JSON.stringify({ reason }),
     }),

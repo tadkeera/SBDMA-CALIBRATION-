@@ -30,6 +30,11 @@ PERMISSIONS: Final[tuple[str, ...]] = (
     "users.manage",
     "maintenance.manage",
     "attachments.manage",
+    # OOS deviations: raising one is separated from closing one, so the person who
+    # investigates cannot also pronounce their own investigation complete.
+    "deviations.raise",
+    "deviations.investigate",
+    "deviations.close",
 )
 
 ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
@@ -48,7 +53,13 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "maintenance.manage",
         "attachments.manage",
     ),
-    "ANALYST": ("instruments.view", "calibration.run", "reports.export", "attachments.manage"),
+    "ANALYST": (
+        "instruments.view",
+        "calibration.run",
+        "reports.export",
+        "attachments.manage",
+        "deviations.raise",
+    ),
     "TECHNICAL_REVIEWER": (
         "instruments.view",
         "calibration.run",
@@ -63,12 +74,17 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "limits.manage",
         "reports.export",
         "audit.view",
+        "deviations.raise",
+        "deviations.investigate",
+        "deviations.close",
     ),
     "ENGINEERING_SERVICE": (
         "instruments.view",
         "maintenance.manage",
         "reports.export",
         "attachments.manage",
+        # a maintenance-induced failure is raised by whoever fixes the instrument
+        "deviations.raise",
     ),
     "VIEWER": ("instruments.view",),
 }

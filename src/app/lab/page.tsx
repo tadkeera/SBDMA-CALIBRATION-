@@ -63,6 +63,11 @@ export default function LabPage() {
   const [savedRun, setSavedRun] = useState<RunRecord | null>(null);
   const [serverRun, setServerRun] = useState<ServerRun | null>(null);
   const [signatureOpen, setSignatureOpen] = useState(false);
+  const [deviationOpen, setDeviationOpen] = useState(false);
+  const [devTitle, setDevTitle] = useState('');
+  const [devDescription, setDevDescription] = useState('');
+  const [devClass, setDevClass] = useState('MAJOR');
+  const [devBusy, setDevBusy] = useState(false);
   const [signaturePassword, setSignaturePassword] = useState('');
   const [signatureReason, setSignatureReason] = useState('');
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -316,6 +321,41 @@ export default function LabPage() {
       }
     } finally {
       setSaving(false);
+    }
+  };
+
+  /**
+   * Raise an OOS deviation against the stored run.
+   *
+   * Only offered for a FAIL or INCOMPLETE verdict: a passing result must not be
+   * dressed up as an investigation, and the server refuses it anyway.
+   */
+  const raiseDeviation = async () => {
+    if (!serverRun) return;
+    setDevBusy(true);
+    try {
+      const deviation = await api.raiseDeviation({
+        run_id: serverRun.id,
+        title: devTitle.trim(),
+        description: devDescription.trim(),
+        classification: devClass,
+      });
+      setDeviationOpen(false);
+      setDevTitle('');
+      setDevDescription('');
+      notify(
+        'success',
+        t('فُتح انحراف OOS', 'OOS deviation raised'),
+        `${deviation.reference} · ${t('بانتظار تحقيق ضمان الجودة', 'awaiting QA investigation')}`,
+      );
+    } catch (error) {
+      notify(
+        'error',
+        t('تعذّر فتح الانحراف', 'Deviation not raised'),
+        error instanceof ApiError ? error.text(lang) : String(error),
+      );
+    } finally {
+      setDevBusy(false);
     }
   };
 
@@ -667,6 +707,20 @@ export default function LabPage() {
           >
             <Download size={14} /> {t('شهادة PDF', 'Certificate PDF')}
           </button>
+          {serverRun &&
+            (serverRun.overall_status === 'FAIL' || serverRun.overall_status === 'INCOMPLETE') && (
+            <button
+              className="btn btn-ghost"
+              style={{ color: 'var(--fail)' }}
+              onClick={() => setDeviationOpen(true)}
+              title={t(
+                'التشغيل غير المطابق لا يُعتمد — يفتح له انحراف OOS ويُغلق بإعادة اختبار ناجحة',
+                'A failing run is never approved — it gets an OOS deviation, closed with a passing retest',
+              )}
+            >
+              <AlertTriangle size={14} /> {t('فتح انحراف OOS', 'Raise OOS deviation')}
+            </button>
+          )}
           <button className="btn btn-primary" onClick={handleRun} disabled={running || !instrument}>
             <Play size={14} /> {running ? t('جارٍ الحساب…', 'Computing…') : t('Run Calibration', 'Run Calibration')}
           </button>
@@ -696,6 +750,57 @@ export default function LabPage() {
           )}
         </Card>
       )}
+
+      <Modal
+        open={deviationOpen}
+        title={t('فتح انحراف خارج المواصفة (OOS)', 'Raise an out-of-specification deviation')}
+        onClose={() => setDeviationOpen(false)}
+        width={640}
+        footer={
+          <>
+            <button className="btn btn-ghost" onClick={() => setDeviationOpen(false)} disabled={devBusy}>
+              {t('إلغاء', 'Cancel')}
+            </button>
+            <button
+              className="btn btn-primary"
+              disabled={devBusy || devTitle.trim().length < 8 || devDescription.trim().length < 20}
+              onClick={() => void raiseDeviation()}
+            >
+              {devBusy ? t('جارٍ الفتح…', 'Raising…') : t('فتح الانحراف', 'Raise deviation')}
+            </button>
+          </>
+        }
+      >
+        <p className="mb-3 text-[11.5px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+          {t(
+            'الانحراف يوثّق الفشل ولا يغيّر نتيجته. يبقى التشغيل غير المطابق غير معتمد، ويُغلق الانحراف بإعادة اختبار ناجحة هي التي تحمل الشهادة.',
+            'A deviation documents the failure without altering it. The failing run stays unapproved; the deviation closes against a passing retest, and the retest carries the certificate.',
+          )}
+        </p>
+        <Field label={t('عنوان الانحراف', 'Deviation title')}>
+          <input className="input" value={devTitle} onChange={(event) => setDevTitle(event.target.value)} />
+        </Field>
+        <div className="mt-2">
+          <Field label={t('الوصف والملاحظة الأولية', 'Description and initial observation')}>
+            <textarea className="textarea" rows={4} value={devDescription} onChange={(event) => setDevDescription(event.target.value)} />
+          </Field>
+        </div>
+        <div className="mt-2">
+          <Field
+            label={t('التصنيف', 'Classification')}
+            hint={t(
+              'الانحراف الحرج يتطلب أن يغلقه شخص آخر غير المحقّق عند توفّر مسؤول جودة ثانٍ.',
+              'A critical deviation must be closed by someone other than the investigator when a second QA officer exists.',
+            )}
+          >
+            <select className="input" value={devClass} onChange={(event) => setDevClass(event.target.value)}>
+              <option value="CRITICAL">{t('حرج', 'Critical')}</option>
+              <option value="MAJOR">{t('جسيم', 'Major')}</option>
+              <option value="MINOR">{t('بسيط', 'Minor')}</option>
+            </select>
+          </Field>
+        </div>
+      </Modal>
 
       <Modal
         open={confirmOpen}

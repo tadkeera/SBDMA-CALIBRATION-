@@ -498,6 +498,41 @@ class RunService:
         await self.session.flush()
         return run
 
+    async def _deviation_context(self, run: CalibrationRun) -> dict:
+        """Tell the approver what already exists for this failure.
+
+        Without this the refusal is a dead end: the user is told to raise a
+        deviation and cannot tell whether one is already open, already
+        investigated, or closed with a retest sitting ready for approval.
+        """
+        from app.models.deviations import Deviation
+
+        rows = (
+            await self.session.execute(
+                select(Deviation)
+                .where(Deviation.run_id == run.id, Deviation.deleted_at.is_(None))
+                .order_by(Deviation.raised_at.desc())
+            )
+        ).scalars().all()
+        if not rows:
+            return {"deviation": None, "hint": "raise_deviation"}
+        latest = rows[0]
+        return {
+            "deviation": {
+                "id": str(latest.id),
+                "reference": latest.reference,
+                "status": latest.status,
+                "retest_run_id": str(latest.retest_run_id) if latest.retest_run_id else None,
+            },
+            "hint": {
+                "OPEN": "investigate_deviation",
+                "INVESTIGATING": "record_investigation_outcome",
+                "PENDING_VERIFICATION": "close_deviation",
+                "CLOSED": "approve_retest_run",
+                "CANCELLED": "raise_deviation",
+            }.get(latest.status, "raise_deviation"),
+        }
+
     async def approve(
         self,
         *,
@@ -518,9 +553,21 @@ class RunService:
             )
         if run.overall_status in ("FAIL", "INCOMPLETE"):
             raise ConflictError(
-                message_ar="لا يمكن اعتماد تشغيل غير مطابق أو غير مكتمل — يلزم فتح انحراف OOS",
-                message_en="A failing or incomplete run cannot be approved — raise an OOS deviation",
+                message_ar=(
+                    "لا يمكن اعتماد تشغيل غير مطابق أو غير مكتمل — يلزم فتح انحراف OOS "
+                    "وإغلاقه بإعادة اختبار ناجحة، ثم اعتماد تشغيل إعادة الاختبار"
+                ),
+                message_en=(
+                    "A failing or incomplete run cannot be approved — raise an OOS "
+                    "deviation, close it with a passing retest, and approve the retest run"
+                ),
+                details=await self._deviation_context(run),
             )
+        # A deviation never excuses a failed result. It provides the investigation
+        # and, through closure with a passing retest, the evidence that the
+        # instrument was restored — but the retest is the run that gets approved,
+        # not the run that failed. The message points at the deviation so the
+        # approver has somewhere concrete to go instead of a dead end.
         if run.overall_status == UNDER_REVIEW:
             raise LimitGovernanceError(
                 message_ar=(

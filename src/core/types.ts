@@ -251,6 +251,10 @@ export const PERMISSIONS = [
   'settings.manage',
   'users.manage',
   'maintenance.manage',
+  'attachments.manage',
+  'deviations.raise',
+  'deviations.investigate',
+  'deviations.close',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -269,7 +273,7 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     'users.manage',
     'maintenance.manage',
   ],
-  ANALYST: ['instruments.view', 'calibration.run', 'reports.export'],
+  ANALYST: ['instruments.view', 'calibration.run', 'reports.export', 'deviations.raise'],
   TECHNICAL_REVIEWER: ['instruments.view', 'calibration.run', 'calibration.review', 'reports.export'],
   QA_APPROVER: [
     'instruments.view',
@@ -279,8 +283,16 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     'limits.manage',
     'reports.export',
     'audit.view',
+    'deviations.raise',
+    'deviations.investigate',
+    'deviations.close',
   ],
-  ENGINEERING_SERVICE: ['instruments.view', 'maintenance.manage', 'reports.export'],
+  ENGINEERING_SERVICE: [
+    'instruments.view',
+    'maintenance.manage',
+    'reports.export',
+    'deviations.raise',
+  ],
   VIEWER: ['instruments.view'],
 };
 

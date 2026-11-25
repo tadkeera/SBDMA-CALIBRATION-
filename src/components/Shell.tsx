@@ -18,6 +18,7 @@ import {
   Sun,
   UserCog,
   Wrench,
+  AlertTriangle,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
 import { PasswordChangeGate } from './PasswordChangeGate';
@@ -32,6 +33,13 @@ const NAV = [
   { href: '/qa', ar: 'ضمان الجودة والاعتماد', en: 'Quality Assurance', icon: ShieldCheck, perm: 'calibration.review' as const },
   { href: '/engineering', ar: 'الصيانة والهندسة', en: 'Engineering', icon: Wrench, perm: 'maintenance.manage' as const },
   { href: '/control', ar: 'الإدارة المركزية', en: 'Central Control', icon: Cog, perm: 'settings.manage' as const },
+  {
+    href: '/deviations',
+    ar: 'انحرافات OOS',
+    en: 'Deviations',
+    icon: AlertTriangle,
+    perm: 'instruments.view' as const,
+  },
   { href: '/users', ar: 'إدارة المستخدمين', en: 'Users', icon: UserCog, perm: 'users.manage' as const },
   { href: '/audit', ar: 'سجل التدقيق', en: 'Audit Trail', icon: ScrollText, perm: 'audit.view' as const },
 ];

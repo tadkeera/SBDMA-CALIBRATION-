@@ -175,12 +175,35 @@ export default function QaPage() {
       setSignOpen(false);
       await loadRuns();
     } catch (error) {
-      const message =
+      let message =
         error instanceof ApiError
           ? `${error.code} — ${error.text(lang)}`
           : error instanceof Error
             ? error.message
             : String(error);
+      // The server answers a failing-run approval with the deviation that already
+      // exists for it and the next step. Dropping that would leave the approver at
+      // a dead end, which is exactly the defect the deviation register was built to
+      // remove — so the hint travels into the toast.
+      if (error instanceof ApiError) {
+        const details = error.details as
+          | { deviation?: { reference?: string; status?: string } | null; hint?: string }
+          | undefined;
+        if (details?.hint) {
+          const next: Record<string, [string, string]> = {
+            raise_deviation: ['افتح انحراف OOS من سجل الانحرافات', 'Raise an OOS deviation from the deviations register'],
+            investigate_deviation: ['يلزم بدء التحقيق في الانحراف', 'The deviation needs its investigation opened'],
+            record_investigation_outcome: ['يلزم تسجيل نتيجة التحقيق', 'The investigation outcome must be recorded'],
+            close_deviation: ['يلزم إغلاق الانحراف بقرار CAPA', 'The deviation must be closed with a CAPA decision'],
+            approve_retest_run: ['اعتمد تشغيل إعادة الاختبار المرتبط بالانحراف', 'Approve the retest run cited by the deviation'],
+          };
+          const step = next[details.hint];
+          if (step) {
+            const reference = details.deviation?.reference;
+            message += ` · ${t(...step)}${reference ? ` (${reference})` : ''}`;
+          }
+        }
+      }
       notify('error', t('فشل الإجراء', 'Action failed'), message);
       setSignOpen(false);
     } finally {

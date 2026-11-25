@@ -25,8 +25,8 @@ Incubators, Stability Chambers).
 | الرسوم العلمية | Apache ECharts (انحدار OLS، بواقي، GPV، أطياف، مخططات تحكم) |
 | محرك الحسابات (المتصفح) | AST Parser آمن + `decimal.js` — **بدون `eval()`** |
 | محرك الحسابات (الخادم) | Python 3.12 · `decimal.Decimal` · AST مُتحقق منه — **بدون `eval()`** |
-| خادم الإنتاج | FastAPI 0.165 (Async) · 34 مساراً في `/api/v1` · Argon2id + JWT · تقارير PDF/Excel · مرفقات موقّعة بالبصمة |
-| طبقة الحوكمة في القاعدة | 17 Trigger: تدقيق ملحق فقط، قفل النتائج، قفل التشغيل، حاجز الانتهاء، `updated_at` |
+| خادم الإنتاج | FastAPI 0.165 (Async) · 58 عملية على 45 مساراً في `/api/v1` · Argon2id + JWT · تقارير PDF/Excel · مرفقات موقّعة بالبصمة |
+| طبقة الحوكمة في القاعدة | 25 Trigger: تدقيق ملحق فقط، قفل النتائج، قفل التشغيل، حاجز الانتهاء، حُرّاس الانحرافات OOS، `updated_at` |
 | الطوابير والكاش | Redis 7 · Celery Worker/Beat |
 | البنية التحتية | Docker Compose · Kubernetes (HPA + PDB + Rolling Updates) · Nginx |
 
@@ -125,7 +125,7 @@ PASS / FAIL / UNDER_REVIEW / INCOMPLETE
 # 1) قاعدة البيانات
 createdb sbdma_calibration && createdb sbdma_test
 
-# 2) الترحيلات (تُنشئ 22 جدولاً + 17 Trigger حوكمة)
+# 2) الترحيلات (تُنشئ 23 جدولاً + 25 Trigger حوكمة)
 cd backend && alembic upgrade head
 
 # 3) البيانات الأولية الحتمية (أقسام، أدوار، صلاحيات، مستخدمون، بروتوكول، جهاز، أدوات مرجعية)
@@ -160,7 +160,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## الخادم الخلفي
 
-**منفَّذ ويعمل فعلياً** (المرحلتان A وB): 21 جدولاً + 17 Trigger حوكمة، 31 مسار REST،
+**منفَّذ ويعمل فعلياً** (المراحل A وB وعامل ثانٍ وانحرافات OOS): 23 جدولاً + 25 Trigger حوكمة،
+58 عملية REST،
 Argon2id + JWT بتدوير رموز، توقيع إلكتروني، فصل مهام، عزل أقسام، وSeeders حتمية
 من البروتوكول نفسه (108 حدود)، وشهادات PDF وملفات Excel مُدقَّقة التنزيل.
 
