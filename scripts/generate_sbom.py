@@ -13,6 +13,14 @@ it is written against the metadata that already exists in the repo — ``pip fre
 the deployment interpreter and ``package-lock.json`` of the frontend. That means it
 runs on a machine with no network and cannot itself be a compromised package.
 
+Which interpreter
+-----------------
+Run it with an environment that has ``backend/requirements.txt`` installed and nothing
+else — that is what ships. Generating from a developer's fully-loaded virtualenv
+describes the developer: the first SBOM produced here carried pymupdf, onnxruntime and
+numpy, none of which the application imports. The CI job therefore installs the runtime
+requirements into a clean environment before running ``--check``.
+
 Usage
     python scripts/generate_sbom.py                # writes sbom/*.cdx.json
     python scripts/generate_sbom.py --out dist    # elsewhere

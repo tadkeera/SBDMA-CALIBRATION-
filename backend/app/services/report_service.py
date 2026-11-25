@@ -257,7 +257,11 @@ def _letterhead(
     *,
     width: float | None = None,
 ) -> list[Any]:
-    """The official letterhead: Arabic right, logo centred, English left, ruled off.
+    """The official letterhead: Arabic flush right, logo centred, English flush left.
+
+    The Arabic block touches the right margin, the mark sits exactly between the two
+    blocks, and the English block touches the left margin — the three sit at the two
+    outer edges and the centre of the page, not stacked in the middle.
 
     Nothing here is invented: the four lines come from the stored settings (or the
     agency's defaults) and the logo is the uploaded official mark. When no logo has
@@ -306,12 +310,17 @@ def _letterhead(
         except Exception:  # noqa: BLE001 - a broken image must not lose the report
             centre_cell = Paragraph("", en_style)
 
+    # Physical layout, not a reading-order layout: the Arabic block is flush with the
+    # RIGHT margin, the mark is centred, and the English block is flush with the LEFT
+    # margin. Putting Arabic in the left-hand column and pushing it right (the obvious
+    # "align the cell" reading of the design) huddles both blocks against the logo with
+    # empty bands at the outer edges — which is exactly how the first version printed.
     table = Table(
         [
             [
-                [Paragraph(line, ar_style) for line in shaped_ar],
-                centre_cell,
                 [Paragraph(line, en_style) for line in english],
+                centre_cell,
+                [Paragraph(line, ar_style) for line in shaped_ar],
             ]
         ],
         colWidths=[side, centre, side],
@@ -320,9 +329,9 @@ def _letterhead(
         TableStyle(
             [
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("ALIGN", (0, 0), (0, 0), "RIGHT"),
+                ("ALIGN", (0, 0), (0, 0), "LEFT"),
                 ("ALIGN", (1, 0), (1, 0), "CENTER"),
-                ("ALIGN", (2, 0), (2, 0), "LEFT"),
+                ("ALIGN", (2, 0), (2, 0), "RIGHT"),
                 ("LEFTPADDING", (0, 0), (-1, -1), 0),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 0),
                 ("TOPPADDING", (0, 0), (-1, -1), 0),

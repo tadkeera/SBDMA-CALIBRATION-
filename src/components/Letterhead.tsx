@@ -145,12 +145,18 @@ export function Letterhead({
         alignItems: 'center',
         gap: 14,
         padding: '10px 2px 8px',
+        // The band is a PHYSICAL layout — English at the far left, the mark in the
+        // middle, Arabic at the far right — so the grid runs left-to-right regardless
+        // of the page's RTL direction, and each text block sets its own direction.
+        // Without this the app's `dir="rtl"` mirrors the columns and, because `start`
+        // then means the right edge, both blocks end up pressed against the logo.
+        direction: 'ltr',
         ...style,
       }}
     >
-      {/* right: the Arabic block */}
-      <div style={{ display: 'grid', gap: 1, justifyItems: 'end', minWidth: 0 }}>
-        {arabic.map((text, index) => line(text, 'right', index, arabic.length))}
+      {/* far left: the English block */}
+      <div style={{ display: 'grid', gap: 1, justifyItems: 'start', minWidth: 0 }}>
+        {english.map((text, index) => line(text, 'left', index, english.length))}
       </div>
 
       {/* centre: the mark, exactly between the two blocks */}
@@ -175,9 +181,9 @@ export function Letterhead({
         )}
       </div>
 
-      {/* left: the English block */}
-      <div style={{ display: 'grid', gap: 1, justifyItems: 'start', minWidth: 0 }}>
-        {english.map((text, index) => line(text, 'left', index, english.length))}
+      {/* far right: the Arabic block */}
+      <div style={{ display: 'grid', gap: 1, justifyItems: 'end', minWidth: 0 }}>
+        {arabic.map((text, index) => line(text, 'right', index, arabic.length))}
       </div>
 
       {/* the divider: a brand rule with a hairline beneath it */}

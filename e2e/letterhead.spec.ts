@@ -30,6 +30,43 @@ test('the sign-in screen carries the official letterhead', async ({ page }) => {
   await expect(letterhead).toContainText(ENGLISH_LAST);
 });
 
+test('the three blocks sit at the two edges and the centre, not around the logo', async ({
+  page,
+}) => {
+  // The agency's requirement is geometric: Arabic flush with the right margin, the mark
+  // exactly centred, English flush with the left margin. An earlier version satisfied the
+  // words ("Arabic right, English left") while pushing both blocks *towards* the logo, so
+  // the band read as three items huddled in the middle. Measuring the boxes is the only
+  // assertion that catches that.
+  await page.goto('/login');
+  const band = page.locator('header.letterhead').first();
+  await expect(band).toBeVisible({ timeout: 30_000 });
+
+  const box = await band.boundingBox();
+  expect(box).not.toBeNull();
+  const bandBox = box!;
+
+  const englishBlock = band.locator(':scope > div').nth(0);
+  const logoCell = band.locator(':scope > div').nth(1);
+  const arabicBlock = band.locator(':scope > div').nth(2);
+
+  const english = await englishBlock.locator(':scope > div').first().boundingBox();
+  const arabic = await arabicBlock.locator(':scope > div').first().boundingBox();
+  const logo = await logoCell.boundingBox();
+  expect(english && arabic && logo).toBeTruthy();
+
+  const TOLERANCE = 16; // the band's own 2px padding, plus sub-pixel rounding
+  // English touches the left edge …
+  expect(Math.abs(english!.x - bandBox.x)).toBeLessThanOrEqual(TOLERANCE);
+  // … Arabic touches the right edge …
+  expect(
+    Math.abs(arabic!.x + arabic!.width - (bandBox.x + bandBox.width)),
+  ).toBeLessThanOrEqual(TOLERANCE);
+  // … and there is real space between each block and the mark, not a shared cluster
+  expect(logo!.x - (english!.x + english!.width)).toBeGreaterThanOrEqual(12);
+  expect(arabic!.x - (logo!.x + logo!.width)).toBeGreaterThanOrEqual(12);
+});
+
 test('the administrator edits the letterhead and uploads the logo', async ({ browser, baseURL }) => {
   await withSignedInPage(browser, baseURL, 'admin', async (page) => {
     await open(page, '/settings');
