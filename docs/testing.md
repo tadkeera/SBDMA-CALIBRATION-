@@ -142,6 +142,21 @@ global setup: 0 existing run(s), 2 second factor(s) ready
 في CI: وظيفة `e2e` في `.github/workflows/ci.yml` بعد `backend` و`frontend` — خدمة PostgreSQL 16،
 تثبيت Chromium، `./e2e/prepare-db.sh`، ثم `npx playwright test`، وترفع التقرير عند الفشل.
 
+آخر تشغيل على GitHub Actions (المشغّل `ubuntu-24.04`، قاعدة بيانات جديدة تماماً):
+```
+==> done: 23 tables
+  reviewer.phys: two-step verification enrolled
+  reviewer.phys: signed in through the UI, session saved
+  qa.officer: two-step verification enrolled
+  qa.officer: signed in through the UI, session saved
+global setup: 0 existing run(s), 2 second factor(s) ready
+14 passed (1.7m)
+```
+> ما كشفه الـCI فوراً ولم يكشفه التشغيل المحلي: (1) المشغّل `ubuntu-latest` صار 26.04،
+> وPlaywright 1.55 لا يثبّت مكتبات Chromium عليه ⇒ ثُبّت المشغّل على `ubuntu-24.04`.
+> (2) الاختبارات كانت تمسح حدّ الطلبات بـ`reset()` (النافذة المحلية فقط) بينما CI يشغّل
+> النافذة المشتركة في Redis ⇒ 24 اختباراً انهار بـ`429` وتغطية 55%. أُصلح بـ`await clear()`.
+
 ## 4) غير المُنفَّذ بعد
 - اختبار تغطية متزامن على مجمّع Docker الكامل (compose) — الاختبارات الحالية تعمل على PostgreSQL محلي.
 - اختبارات الأمان الآلية (ZAP/Burp) — موصى بها قبل الإنتاج.
