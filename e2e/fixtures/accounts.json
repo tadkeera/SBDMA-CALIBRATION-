@@ -1,0 +1,29 @@
+{
+  "_comment": [
+    "Accounts used by the end-to-end suite. These are TEST credentials for a",
+    "disposable database created by e2e/prepare-db.sh and the CI e2e job — they are",
+    "seeded into the E2E database only, and are never the production passwords.",
+    "e2e/prepare-db.sh exports the same strings as SBDMA_<ROLE>_PASSWORD before it",
+    "runs `python -m app.seed`, so the seeder and the browser agree on one source."
+  ],
+  "analyst": {
+    "username": "analyst.phys",
+    "env": "SBDMA_ANALYST_PASSWORD",
+    "password": "E2e-Analyst-2026!Pass"
+  },
+  "reviewer": {
+    "username": "reviewer.phys",
+    "env": "SBDMA_REVIEWER_PASSWORD",
+    "password": "E2e-Reviewer-2026!Pass"
+  },
+  "qa": {
+    "username": "qa.officer",
+    "env": "SBDMA_QA_OFFICER_PASSWORD",
+    "password": "E2e-QAOfficer-2026!Pass"
+  },
+  "viewer": {
+    "username": "viewer",
+    "env": "SBDMA_VIEWER_PASSWORD",
+    "password": "E2e-Viewer-2026!Pass"
+  }
+}

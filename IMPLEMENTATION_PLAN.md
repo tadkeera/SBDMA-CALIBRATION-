@@ -2,7 +2,7 @@
 
 > المرجع الملزم: `SBDMA_Calibration_Master_Prompt.txt` (المعمارية والتقنيات والبنود 01–34)
 > المرجع العلمي: `HPLC_LC2050C_UV_Calibration_Protocol_and_Comparative_Report.docx`
-> الحالة بتاريخ 2026-11-25 — الإصدار `1.8.0`
+> الحالة بتاريخ 2026-11-25 — الإصدار `1.9.0`
 > تقييم موقع المشروع من المراحل العشر، بدليله: `docs/phase-status-assessment.md`
 
 ---

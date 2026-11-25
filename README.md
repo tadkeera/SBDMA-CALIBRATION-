@@ -1,7 +1,7 @@
 # SBDMA · نظام إدارة ومعايرة الأجهزة المخبرية
 ### Laboratory Calibration & OQ Intelligence Platform — Supreme Board of Drugs & Medical Devices
 
-[![Version](https://img.shields.io/badge/version-1.8.0-21695e)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.9.0-21695e)](VERSION)
 [![ISO/IEC 17025](https://img.shields.io/badge/ISO%2FIEC-17025-21695e)](#الامتثال-التنظيمي)
 [![21 CFR Part 11](https://img.shields.io/badge/21%20CFR-Part%2011-21695e)](#الامتثال-التنظيمي)
 [![Tests](https://img.shields.io/badge/tests-102%20passing-16794f)](#الاختبارات-المنفذة)
@@ -167,9 +167,10 @@ https://<project>.vercel.app/api/v1/*    →  api   (FastAPI من backend/، ent
 |---|---|---|---|
 | محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npx vitest run` |
 | طبقة التكيّف مع الخادم (TypeScript) | 15 | ✅ ناجحة | `npx vitest run` |
-| محرك الحسابات + API + الحوكمة + التقارير + المرفقات + حدّ الطلبات + حراسة النشر (Python/PostgreSQL/Redis) | 209 | ✅ ناجحة | `cd backend && pytest` |
-| بوابة CI (PostgreSQL 16 + Redis 8 خدميين، تغطية ≥ 85%) | 3 وظائف | ✅ | `.github/workflows/ci.yml` |
-| الجولة الكاملة في متصفح حقيقي (Playwright/Chromium) | 1 سيناريو | ✅ دخول ← تشغيل ← مراجعة ← اعتماد ← تنزيل الشهادة | `python3 sbdma-platform/e2e_live.py` |
+| توليد رمز TOTP للحزمة (TypeScript، متجهات RFC) | 4 | ✅ ناجحة | `npx vitest run` |
+| محرك الحسابات + API + الحوكمة + التقارير + المرفقات + حدّ الطلبات + حراسة النشر + حماية E2E (Python/PostgreSQL/Redis) | 224 | ✅ ناجحة | `cd backend && pytest` |
+| بوابة CI (PostgreSQL 16 + Redis 8 خدميين، تغطية ≥ 85%) | 4 وظائف | ✅ | `.github/workflows/ci.yml` |
+| **حزمة E2E داخل المستودع** (Playwright/Chromium على بنية إنتاج) | **14 اختباراً** | ✅ دخول ← 13 اختباراً ← مراجعة ← اعتماد ← شهادة PDF/XLSX ← سلسلة التدقيق | `npm run e2e:prepare && npm run e2e` |
 
 التغطية تشمل: أولويات العمليات، صيغ التدفق والتدرج والحقن الوزني، OLS، `%RSD`، الحساسية
 النسبية، الترحيل، رفض التعبيرات الخطرة (`__import__`, `eval`, `open`, `;`, comprehensions)،

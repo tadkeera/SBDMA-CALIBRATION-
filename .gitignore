@@ -34,3 +34,8 @@ sbdma-seed-credentials.txt
 # coverage artefacts
 .coverage
 coverage.xml
+
+# end-to-end suite artefacts
+playwright-report/
+test-results/
+e2e/.auth/
