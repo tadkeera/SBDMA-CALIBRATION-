@@ -5,7 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Query, Request
+import asyncio
+
+from fastapi import APIRouter, File, Form, Query, Request, Response, UploadFile
+from fastapi.responses import JSONResponse
 from sqlalchemy import func, select
 
 from app.api.deps import PrincipalDep, SessionDep, client_ip
@@ -34,6 +37,13 @@ from app.models.audit import AuditLog
 from app.models.protocol import AcceptanceLimit, CalibrationProtocol, TestDefinition
 from app.models.rbac import User
 from app.models.runs import MaintenanceTicket
+from app.models.runs import CalibrationAttachment
+from app.services.attachment_service import (
+    AttachmentError,
+    discard_unregistered,
+    read_for_verification,
+    store_stream,
+)
 from app.services.audit_service import AuditService
 
 router = APIRouter(tags=["catalogue"])
@@ -614,3 +624,258 @@ async def verify_audit(session: SessionDep, principal: PrincipalDep):
     principal.require("audit.view")
     result = await AuditService.verify_chain(session)
     return ok(result)
+
+
+# ────────────────────────── evidence attachments ──────────────────────────── #
+
+
+async def _instrument_in_scope(
+    instrument_id: uuid.UUID, session, principal
+) -> Instrument:
+    """Load an instrument and enforce department isolation with 404 semantics."""
+    instrument = await session.get(Instrument, instrument_id)
+    if instrument is None or instrument.deleted_at is not None:
+        raise NotFoundError(message_ar="الجهاز غير موجود", message_en="Instrument not found")
+    principal.assert_department(instrument.department_id)
+    return instrument
+
+
+def _attachment_out(row) -> dict:
+    return {
+        "id": str(row.id),
+        "instrument_id": str(row.instrument_id) if row.instrument_id else None,
+        "run_id": str(row.run_id) if row.run_id else None,
+        "test_result_id": str(row.test_result_id) if row.test_result_id else None,
+        "file_name": row.file_name,
+        "mime_type": row.mime_type,
+        "size_bytes": row.size_bytes,
+        "sha256_checksum": row.sha256_checksum,
+        "description_ar": row.description_ar,
+        "supersedes_id": str(row.supersedes_id) if row.supersedes_id else None,
+        "uploaded_by": str(row.uploaded_by) if row.uploaded_by else None,
+        "created_at": row.created_at.isoformat(),
+        "download_url": f"/api/v1/instruments/attachments/{row.id}/content",
+    }
+
+
+@router.post(
+    "/instruments/{instrument_id}/attachments",
+    summary="إرفاق دليل مخبري (مع تحقق SHA-256)",
+    status_code=201,
+)
+async def upload_attachment(
+    instrument_id: uuid.UUID,
+    request: Request,
+    session: SessionDep,
+    principal: PrincipalDep,
+    file: UploadFile = File(...),
+    description: str = Form(default=""),
+    supersedes_id: uuid.UUID | None = Form(default=None),
+):
+    """File one piece of evidence against an instrument.
+
+    The server computes the SHA-256 itself — a client-supplied hash would let the
+    client choose what the record claims. The stored bytes are re-read and
+    re-hashed after writing, and any mismatch aborts the request.
+    """
+    principal.require("attachments.manage")
+    instrument = await _instrument_in_scope(instrument_id, session, principal)
+
+    reason = (description or "").strip()
+    if len(reason) < 8:
+        raise ValidationFailedError(
+            message_ar="وصف المرفق مطلوب ولا يقل عن 8 أحرف (ALCOA+)",
+            message_en="A description of at least 8 characters is required (ALCOA+)",
+            field="description",
+        )
+    if len(reason) > 1000:
+        raise ValidationFailedError(
+            message_ar="وصف المرفق طويل جداً (الحد 1000 حرف)",
+            message_en="The description is too long (1000 characters max)",
+            field="description",
+        )
+
+    if supersedes_id is not None:
+        previous = await session.get(CalibrationAttachment, supersedes_id)
+        if previous is None:
+            raise NotFoundError(
+                message_ar="المرفق السابق غير موجود", message_en="Superseded attachment not found"
+            )
+        if previous.instrument_id != instrument.id:
+            raise ValidationFailedError(
+                message_ar="لا يمكن إحلال مرفق يخص جهازاً آخر",
+                message_en="A superseded attachment must belong to the same instrument",
+                field="supersedes_id",
+            )
+
+    try:
+        stored = await asyncio.to_thread(
+            store_stream, file.file, file_name=file.filename or "", mime_type=file.content_type or ""
+        )
+    except AttachmentError as exc:
+        raise ValidationFailedError(
+            message_ar=exc.message_ar, message_en=exc.message_en, field=exc.field
+        ) from exc
+    finally:
+        await file.close()
+
+    duplicate = (
+        await session.execute(
+            select(CalibrationAttachment).where(
+                CalibrationAttachment.sha256_checksum == stored.sha256
+            )
+        )
+    ).scalar_one_or_none()
+    if duplicate is not None:
+        # same bytes, already filed — reuse the row, never create a second "original"
+        await AuditService(session).record(
+            action="ATTACHMENT_DUPLICATE_REJECTED",
+            entity_type="attachment",
+            entity_id=duplicate.id,
+            actor_label=principal.username,
+            actor_id=principal.user_id,
+            role_label=principal.primary_role,
+            department_id=instrument.department_id,
+            new_values={"sha256": stored.sha256, "file_name": stored.safe_name},
+            reason="محاولة إرفاق ملف مطابق بايتاً بملف مسجَّل — أُعيد المرفق القائم",
+            ip_address=client_ip(request),
+        )
+        await session.commit()
+        # 200, not 201: nothing new was created — the same bytes are already filed
+        return JSONResponse(
+            status_code=200,
+            content=ok(_attachment_out(duplicate), meta={"duplicate": True}),
+        )
+
+    attachment = CalibrationAttachment(
+        id=uuid.uuid4(),
+        instrument_id=instrument.id,
+        file_name=stored.safe_name,
+        mime_type=(file.content_type or "application/octet-stream"),
+        size_bytes=stored.size_bytes,
+        storage_path=stored.storage_path,
+        sha256_checksum=stored.sha256,
+        uploaded_by=principal.user_id,
+        description_ar=reason,
+        supersedes_id=supersedes_id,
+    )
+    session.add(attachment)
+    try:
+        await session.flush()
+        await AuditService(session).record(
+            action="ATTACHMENT_UPLOADED",
+            entity_type="attachment",
+            entity_id=attachment.id,
+            actor_label=principal.username,
+            actor_id=principal.user_id,
+            role_label=principal.primary_role,
+            department_id=instrument.department_id,
+            new_values={
+                "instrument": instrument.asset_code,
+                "file_name": stored.safe_name,
+                "size_bytes": stored.size_bytes,
+                "sha256": stored.sha256,
+                "supersedes": str(supersedes_id) if supersedes_id else None,
+            },
+            reason=reason,
+            ip_address=client_ip(request),
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        # the row never existed, so no signed record points at these bytes
+        await asyncio.to_thread(discard_unregistered, stored.storage_path)
+        raise
+
+    return ok(_attachment_out(attachment))
+
+
+@router.get("/instruments/{instrument_id}/attachments", summary="مرفقات الجهاز")
+async def list_attachments(
+    instrument_id: uuid.UUID,
+    session: SessionDep,
+    principal: PrincipalDep,
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=50, ge=1, le=200),
+):
+    principal.require("instruments.view")
+    await _instrument_in_scope(instrument_id, session, principal)
+    base = select(CalibrationAttachment).where(CalibrationAttachment.instrument_id == instrument_id)
+    total = (
+        await session.execute(select(func.count()).select_from(base.subquery()))
+    ).scalar_one()
+    rows = (
+        await session.execute(
+            base.order_by(CalibrationAttachment.created_at.desc())
+            .offset((page - 1) * page_size)
+            .limit(page_size)
+        )
+    ).scalars().all()
+    return ok(
+        [_attachment_out(r) for r in rows],
+        meta={"page": page, "page_size": page_size, "total": int(total)},
+    )
+
+
+@router.get(
+    "/instruments/attachments/{attachment_id}/content",
+    summary="تنزيل مرفق مع إعادة التحقق من البصمة",
+)
+async def download_attachment(
+    attachment_id: uuid.UUID,
+    request: Request,
+    session: SessionDep,
+    principal: PrincipalDep,
+):
+    """Serve the filed bytes only after proving they still match the checksum."""
+    principal.require("instruments.view")
+    row = await session.get(CalibrationAttachment, attachment_id)
+    if row is None:
+        raise NotFoundError(message_ar="المرفق غير موجود", message_en="Attachment not found")
+    if row.instrument_id is not None:
+        await _instrument_in_scope(row.instrument_id, session, principal)
+
+    try:
+        body, matches = await asyncio.to_thread(
+            read_for_verification, row.storage_path, row.sha256_checksum
+        )
+    except AttachmentError as exc:
+        raise NotFoundError(message_ar=exc.message_ar, message_en=exc.message_en) from exc
+
+    await AuditService(session).record(
+        action="ATTACHMENT_DOWNLOADED",
+        entity_type="attachment",
+        entity_id=row.id,
+        actor_label=principal.username,
+        actor_id=principal.user_id,
+        role_label=principal.primary_role,
+        department_id=None,
+        new_values={
+            "file_name": row.file_name,
+            "sha256": row.sha256_checksum,
+            "integrity_ok": matches,
+        },
+        reason="تنزيل مرفق مخبري" if matches else "تنزيل مرفق — بصمة الملف لا تطابق السجل",
+        ip_address=client_ip(request),
+    )
+    await session.commit()
+
+    if not matches:
+        # never hand out evidence that no longer matches its recorded identity
+        from app.core.exceptions import ConflictError
+
+        raise ConflictError(
+            message_ar="بصمة الملف المخزن لا تطابق البصمة المسجلة — التماس سلامة بيانات",
+            message_en="The stored file no longer matches its recorded checksum — integrity incident",
+            details={"attachment_id": str(row.id), "expected_sha256": row.sha256_checksum},
+        )
+
+    return Response(
+        content=body,
+        media_type=row.mime_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{row.file_name}"',
+            "X-Checksum-SHA256": row.sha256_checksum,
+            "Cache-Control": "no-store",
+        },
+    )

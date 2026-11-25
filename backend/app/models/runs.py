@@ -131,8 +131,18 @@ class CalibrationTestResult(Base, UUIDPrimaryKey, Timestamped):
 
 
 class CalibrationAttachment(Base, UUIDPrimaryKey, Timestamped):
+    """A signed evidence file, addressed by its own SHA-256.
+
+    GxP rule: nothing that was filed as evidence may be edited or deleted — not by
+    the API and not by SQL. A correction is a *new* attachment that supersedes the
+    old one, and both stay readable. The database enforces this (trg_attachment_immutable).
+    """
+
     __tablename__ = "calibration_attachments"
 
+    instrument_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("instruments.id"), index=True
+    )
     test_result_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("calibration_test_results.id", ondelete="CASCADE"), index=True
     )
@@ -145,6 +155,19 @@ class CalibrationAttachment(Base, UUIDPrimaryKey, Timestamped):
     storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
     sha256_checksum: Mapped[str] = sha256_column(nullable=False)
     uploaded_by: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    # human-readable justification, required by ALCOA+ for every filed record
+    description_ar: Mapped[str | None] = mapped_column(Text)
+    supersedes_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("calibration_attachments.id")
+    )
+
+    __table_args__ = (
+        CheckConstraint("size_bytes > 0", name="attachment_size_positive"),
+        CheckConstraint(
+            "instrument_id IS NOT NULL OR run_id IS NOT NULL OR test_result_id IS NOT NULL",
+            name="attachment_has_owner",
+        ),
+    )
 
 
 class MaintenanceTicket(Base, UUIDPrimaryKey, Timestamped):

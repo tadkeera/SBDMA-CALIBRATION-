@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { CheckCircle2, PlusCircle, Wrench } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
+import { AttachmentsPanel } from '@/components/AttachmentsPanel';
 import { Card, EmptyState, Field, Metric, Modal, Skeleton, StatusChip, Toolbar } from '@/components/ui';
 import { db } from '@/core/db/database';
 import { ApiError, api, toInstrument, type ServerInstrument } from '@/core/api/client';
@@ -20,6 +21,7 @@ export default function EngineeringPage() {
   const [instrumentId, setInstrumentId] = useState('');
   const [description, setDescription] = useState('');
   const [busy, setBusy] = useState(false);
+  const [evidenceFor, setEvidenceFor] = useState('');
 
   const canManage = can('maintenance.manage');
 
@@ -246,6 +248,37 @@ export default function EngineeringPage() {
             </Link>
           </div>
         </Card>
+      </div>
+
+      <div className="mt-3">
+        <Card
+          title={t('ملف أدلة الجهاز', 'Instrument evidence file')}
+          subtitle={t('اختر جهازاً لعرض أدلته المخبرية أو إرفاق دليل جديد ببصمة موثقة', 'Pick an instrument to review its evidence or file a new document under a verified checksum')}
+        >
+          <Field label={t('الجهاز', 'Instrument')}>
+            <select
+              className="select"
+              data-testid="evidence-instrument"
+              value={evidenceFor}
+              onChange={(e) => setEvidenceFor(e.target.value)}
+            >
+              <option value="">{t('— اختر جهازاً —', '— select an instrument —')}</option>
+              {instruments.map((i) => (
+                <option key={i.id} value={i.id}>
+                  {i.assetCode} · {i.model}
+                </option>
+              ))}
+            </select>
+          </Field>
+        </Card>
+        {evidenceFor ? (
+          <div className="mt-3">
+            <AttachmentsPanel
+              instrumentId={evidenceFor}
+              instrumentLabel={instruments.find((i) => i.id === evidenceFor)?.assetCode}
+            />
+          </div>
+        ) : null}
       </div>
 
       <Modal

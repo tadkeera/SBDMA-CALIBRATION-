@@ -152,6 +152,69 @@ def main() -> int:
                 failures.append("the saved run does not report a PASS verdict")
 
         print("reached QA queue with the analyst", flush=True)
+        # 6) evidence attachments: the analyst files a document and reads it back
+        go(page, "/engineering")
+        page.wait_for_timeout(2500)
+        picker = page.locator('[data-testid="evidence-instrument"]')
+        # the instrument list arrives from the API after first paint
+        try:
+            page.wait_for_function(
+                """() => {
+                    const el = document.querySelector('[data-testid="evidence-instrument"]');
+                    return !!el && el.options.length > 1;
+                }""",
+                timeout=15000,
+            )
+        except Exception:  # noqa: BLE001 - reported below
+            pass
+        options = picker.locator("option")
+        if options.count() < 2:
+            failures.append("the engineering page lists no instrument to file evidence against")
+        else:
+            picker.select_option(index=1)
+            try:
+                page.wait_for_selector('input[type="file"]', state="attached", timeout=20000)
+            except Exception:  # noqa: BLE001
+                page.screenshot(path=str(OUT / "08-attachments-missing.png"), full_page=True)
+                failures.append("the file input never mounted in the attachments panel")
+
+            evidence = OUT / "evidence-upload.txt"
+            evidence.write_text(
+                "SBDMA\nChromatogram export for repeatability test (T11)\n"
+                "noise=0.010 mAU; drift=0.100 mAU/h\n",
+                encoding="utf-8",
+            )
+            file_input = page.locator('input[type="file"]')
+            if file_input.count() == 0:
+                failures.append("the attachments panel does not offer a file input")
+            else:
+                file_input.first.set_input_files(str(evidence))
+                page.locator("textarea").last.fill(
+                    "مخطط كروماتوغرافي لاختبار التكرارية مأخوذ من LabSolutions"
+                )
+                page.get_by_role("button", name="إرفاق الدليل").click()
+                page.wait_for_timeout(3000)
+                page.screenshot(path=str(OUT / "08-attachments.png"), full_page=True)
+                body_text = page.inner_text("body")
+                if "evidence-upload.txt" not in body_text:
+                    failures.append("the filed attachment does not appear in the evidence list")
+                if "SHA-256" not in body_text:
+                    failures.append("the attachment list does not show the recorded SHA-256")
+
+                download_button = page.get_by_role("button", name="تنزيل موثّق")
+                if download_button.count() == 0:
+                    failures.append("no verified download action for the filed attachment")
+                else:
+                    with page.expect_download(timeout=20000) as dl:
+                        download_button.first.click()
+                    got = dl.value
+                    saved = OUT / (got.suggested_filename or "attachment.txt")
+                    got.save_as(str(saved))
+                    if saved.read_bytes() != evidence.read_bytes():
+                        failures.append("the downloaded attachment differs from the filed bytes")
+                    else:
+                        print(f"downloaded attachment verified byte-identical: {saved.name}")
+
         # 6) sign out, then sign in as the technical reviewer and sign the review
         go(page, "/qa")
         page.wait_for_timeout(2500)
@@ -207,6 +270,24 @@ def main() -> int:
             )
             if overflow:
                 failures.append(f"{overflow} card(s) overflow horizontally")
+
+        # the reviewer may read evidence but must not be offered the filing form
+        go(page, "/engineering")
+        page.wait_for_timeout(2000)
+        reviewer_picker = page.locator('[data-testid="evidence-instrument"]')
+        if reviewer_picker.count():
+            reviewer_picker.select_option(index=1)
+            page.wait_for_timeout(1800)
+            if page.locator('input[type="file"]').count():
+                failures.append("the reviewer was offered the evidence filing form without attachments.manage")
+            if "الإرفاق متاح" not in page.inner_text("body"):
+                failures.append("the reviewer sees no explanation for the hidden filing form")
+
+        # back to the approval queue
+        go(page, "/qa")
+        page.wait_for_timeout(2500)
+        page.locator("li button").first.click()
+        page.wait_for_timeout(1500)
 
         review_button = page.get_by_role("button", name="توقيع المراجعة الفنية")
         if review_button.count() == 0:

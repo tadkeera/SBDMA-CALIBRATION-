@@ -110,7 +110,11 @@ async function request<T>(
       credentials: 'include',
       headers: {
         Accept: 'application/json',
-        ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+        // FormData must keep the browser-generated multipart boundary; only
+        // string/JSON bodies get the JSON content type set here.
+        ...(init.body && !(init.body instanceof FormData)
+          ? { 'Content-Type': 'application/json' }
+          : {}),
         ...(init.headers ?? {}),
       },
     });
@@ -236,6 +240,22 @@ export interface ServerTestResult {
   outputs?: Record<string, unknown>;
   /** Present on `GET /runs/{id}`: the inputs exactly as captured and signed. */
   raw_inputs?: Record<string, unknown>;
+}
+
+export interface ServerAttachment {
+  id: string;
+  instrument_id: string | null;
+  run_id: string | null;
+  test_result_id: string | null;
+  file_name: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256_checksum: string;
+  description_ar: string | null;
+  supersedes_id: string | null;
+  uploaded_by: string | null;
+  created_at: string;
+  download_url: string;
 }
 
 export interface ServerRun {
@@ -437,7 +457,31 @@ export const api = {
   },
   verifyAudit: () =>
     request<{ ok: boolean; total: number; head: string; broken_at?: string | null }>('/audit/verify'),
+
+  // evidence attachments
+  attachments: (instrumentId: string) =>
+    request<ServerAttachment[]>(`/instruments/${instrumentId}/attachments`),
+  /**
+   * Multipart upload. The checksum is computed by the server — sending one from
+   * the browser would let the client choose what the record claims, so we never do.
+   */
+  uploadAttachment: (
+    instrumentId: string,
+    file: File,
+    description: string,
+    supersedesId?: string | null,
+  ) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('description', description);
+    if (supersedesId) form.append('supersedes_id', supersedesId);
+    return request<ServerAttachment>(`/instruments/${instrumentId}/attachments`, {
+      method: 'POST',
+      body: form,
+    });
+  },
 };
+
 
 /** Download a server-generated report (PDF / XLSX) through the authenticated path. */
 export async function downloadReport(path: string, fallbackName: string): Promise<void> {

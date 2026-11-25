@@ -25,7 +25,7 @@ Incubators, Stability Chambers).
 | الرسوم العلمية | Apache ECharts (انحدار OLS، بواقي، GPV، أطياف، مخططات تحكم) |
 | محرك الحسابات (المتصفح) | AST Parser آمن + `decimal.js` — **بدون `eval()`** |
 | محرك الحسابات (الخادم) | Python 3.12 · `decimal.Decimal` · AST مُتحقق منه — **بدون `eval()`** |
-| خادم الإنتاج | FastAPI 0.165 (Async) · 31 مساراً في `/api/v1` · Argon2id + JWT · حد طلبات · تقارير PDF/Excel |
+| خادم الإنتاج | FastAPI 0.165 (Async) · 34 مساراً في `/api/v1` · Argon2id + JWT · تقارير PDF/Excel · مرفقات موقّعة بالبصمة |
 | طبقة الحوكمة في القاعدة | 17 Trigger: تدقيق ملحق فقط، قفل النتائج، قفل التشغيل، حاجز الانتهاء، `updated_at` |
 | الطوابير والكاش | Redis 7 · Celery Worker/Beat |
 | البنية التحتية | Docker Compose · Kubernetes (HPA + PDB + Rolling Updates) · Nginx |
@@ -138,7 +138,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 - التوثيق التفاعلي: `http://localhost:8000/api/docs`
 - فحص الجاهزية الحقيقي (يتصل بـ PostgreSQL فعلاً): `GET /api/v1/health/ready`
-- الاختبارات: `cd backend && pytest -q` → **91 ناجحاً** على قاعدة `sbdma_test` حقيقية تُبنى بالترحيلات.
+- الاختبارات: `cd backend && pytest -q` → **105 ناجحاً** على قاعدة `sbdma_test` حقيقية تُبنى بالترحيلات.
 
 > **ملاحظة أمنية:** الحسابات المزروعة تحمل `must_change_password=true`، وكل من طلب
 > `change-password` يُبطل جميع جلساته القائمة.
@@ -149,7 +149,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 |---|---|---|---|
 | محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npx vitest run` |
 | طبقة التكيّف مع الخادم (TypeScript) | 15 | ✅ ناجحة | `npx vitest run` |
-| محرك الحسابات + API + الحوكمة + التقارير (Python/PostgreSQL) | 91 | ✅ ناجحة | `cd backend && pytest` |
+| محرك الحسابات + API + الحوكمة + التقارير + المرفقات (Python/PostgreSQL) | 105 | ✅ ناجحة | `cd backend && pytest` |
 | الجولة الكاملة في متصفح حقيقي (Playwright/Chromium) | 1 سيناريو | ✅ دخول ← تشغيل ← مراجعة ← اعتماد ← تنزيل الشهادة | `python3 sbdma-platform/e2e_live.py` |
 
 التغطية تشمل: أولويات العمليات، صيغ التدفق والتدرج والحقن الوزني، OLS، `%RSD`، الحساسية

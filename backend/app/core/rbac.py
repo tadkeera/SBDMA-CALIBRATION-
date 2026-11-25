@@ -29,6 +29,7 @@ PERMISSIONS: Final[tuple[str, ...]] = (
     "settings.manage",
     "users.manage",
     "maintenance.manage",
+    "attachments.manage",
 )
 
 ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
@@ -45,8 +46,9 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "settings.manage",
         "users.manage",
         "maintenance.manage",
+        "attachments.manage",
     ),
-    "ANALYST": ("instruments.view", "calibration.run", "reports.export"),
+    "ANALYST": ("instruments.view", "calibration.run", "reports.export", "attachments.manage"),
     "TECHNICAL_REVIEWER": (
         "instruments.view",
         "calibration.run",
@@ -62,7 +64,12 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "reports.export",
         "audit.view",
     ),
-    "ENGINEERING_SERVICE": ("instruments.view", "maintenance.manage", "reports.export"),
+    "ENGINEERING_SERVICE": (
+        "instruments.view",
+        "maintenance.manage",
+        "reports.export",
+        "attachments.manage",
+    ),
     "VIEWER": ("instruments.view",),
 }
 

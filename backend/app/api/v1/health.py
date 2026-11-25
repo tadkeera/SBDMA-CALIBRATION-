@@ -23,7 +23,7 @@ settings = get_settings()
 
 @router.get("/health/live", summary="فحص الحياة")
 async def live():
-    return ok({"status": "alive", "version": "1.0.0"})
+    return ok({"status": "alive", "version": settings.app_version})
 
 
 @router.get("/health/ready", summary="فحص الجهوزية")
@@ -50,7 +50,7 @@ async def health(session: SessionDep):
     db_ok = await ping()
     payload = {
         "status": "ok" if db_ok else "degraded",
-        "version": "1.0.0",
+        "version": settings.app_version,
         "environment": settings.environment,
         "components": {
             "postgresql": "up" if db_ok else "down",

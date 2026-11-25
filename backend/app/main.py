@@ -28,7 +28,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
             "extra_fields": {
                 "environment": settings.environment,
                 "api_prefix": settings.api_prefix,
-                "version": "1.0.0",
+                "version": settings.app_version,
             }
         },
     )
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
 def create_app() -> FastAPI:
     app = FastAPI(
         title="SBDMA Laboratory Calibration & OQ Platform",
-        version="1.0.0",
+        version=settings.app_version,
         description=(
             "نظام إدارة ومعايرة الأجهزة المخبرية — الهيئة العليا للأدوية والمستحضرات الطبية\n\n"
             "ISO/IEC 17025 · 21 CFR Part 11 · ALCOA+"
