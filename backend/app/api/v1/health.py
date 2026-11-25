@@ -70,6 +70,10 @@ async def health(session: SessionDep):
             # the backend matters more than the path: "filesystem" on a serverless
             # platform means the evidence is in /tmp and will not survive the instance
             "storage": f"{settings.storage_path} ({settings.blob_backend})",
+            # A managed pooler allows a fixed number of clients across *all* instances
+            # (Supabase session mode: 15). Publishing the per-instance pool is what makes
+            # that arithmetic possible before it is learned from EMAXCONNSESSION.
+            "db_pool": f"{settings.db_pool_size}+{settings.db_max_overflow} per instance",
         },
     }
     return ok(payload)

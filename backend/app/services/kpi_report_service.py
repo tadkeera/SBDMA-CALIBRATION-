@@ -131,6 +131,7 @@ async def build_kpi_report(
             str(path.relative_to(Path(settings.storage_path))),
             content_type="application/pdf",
             body=blob,
+            session=session,
         )
         written.append(
             {

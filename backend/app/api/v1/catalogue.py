@@ -722,7 +722,9 @@ async def upload_attachment(
 
     # durable copy before anything references it: on a serverless platform the file
     # itself lives in /tmp and would not survive the instance
-    await blobstore.mirror(stored.storage_path, content_type=file.content_type)
+    await blobstore.mirror(
+        stored.storage_path, content_type=file.content_type, session=session
+    )
 
     duplicate = (
         await session.execute(
@@ -790,7 +792,7 @@ async def upload_attachment(
         await session.rollback()
         # the row never existed, so no signed record points at these bytes
         await asyncio.to_thread(discard_unregistered, stored.storage_path)
-        await blobstore.forget(stored.storage_path)
+        await blobstore.forget(stored.storage_path, session=session)
         raise
 
     return ok(_attachment_out(attachment))
@@ -843,7 +845,9 @@ async def download_attachment(
 
     # /tmp is not durable: restore the filed bytes from the database when the local
     # copy is gone, and refuse to serve anything that does not match the record
-    await blobstore.materialise(row.storage_path, expected_sha=row.sha256_checksum)
+    await blobstore.materialise(
+        row.storage_path, expected_sha=row.sha256_checksum, session=session
+    )
     try:
         body, matches = await asyncio.to_thread(
             read_for_verification, row.storage_path, row.sha256_checksum

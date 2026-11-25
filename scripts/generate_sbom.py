@@ -160,10 +160,13 @@ def main(argv: list[str]) -> int:
         body = json.dumps(comparable, indent=2, ensure_ascii=False) + "\n"
         if args.check:
             if not path.is_file() or _strip_time(path.read_text(encoding="utf-8")) != _strip_time(body):
-                stale.append(str(path.relative_to(REPO_ROOT)))
+                stale.append(
+                    str(path.relative_to(REPO_ROOT)) if REPO_ROOT in path.parents else str(path)
+                )
             continue
         path.write_text(body, encoding="utf-8")
-        print(f"{path.relative_to(REPO_ROOT)}: {len(payload['components'])} components")
+        label = path.relative_to(REPO_ROOT) if REPO_ROOT in path.parents else path
+        print(f"{label}: {len(payload['components'])} components")
 
     if args.check:
         if stale:

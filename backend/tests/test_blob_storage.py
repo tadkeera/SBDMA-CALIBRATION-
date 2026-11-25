@@ -180,3 +180,36 @@ async def test_health_names_the_storage_backend(client, durable) -> None:  # noq
     storage = response.json()["data"]["components"]["storage"]
     assert "database" in storage or "filesystem" in storage
     assert get_settings().storage_path in storage
+
+
+async def test_the_copy_is_written_in_the_callers_transaction(durable) -> None:
+    """No second connection: the copy commits with the row that points at it.
+
+    A managed session pooler allows a fixed number of clients across all instances
+    (Supabase: 15). Opening a connection from inside a request that already holds one
+    is how a deployment exhausts its pool — it surfaced in production as
+    ``EMAXCONNSESSION`` and a 500 on the weekly KPI job. Passing the session makes the
+    mirror part of the caller's transaction, so a rollback takes the copy with it and
+    no extra client is dialled.
+    """
+    body = b"filed inside the caller's transaction"
+    key = "209901/txn/atomic.txt"
+    path = _write(key, body)
+
+    async with SessionFactory() as session:
+        await blobstore.mirror(key, content_type="text/plain", session=session)
+        await session.flush()  # the factory runs with autoflush off
+        # visible inside the transaction, before any commit
+        row = (
+            await session.execute(select(StoredBlob).where(StoredBlob.key == key))
+        ).scalar_one()
+        assert row.size_bytes == len(body)
+        await session.rollback()
+
+    # the rollback removed the row with the rest of the work, and the disk copy is the
+    # one the caller still owns
+    async with SessionFactory() as session:
+        assert (
+            await session.execute(select(StoredBlob).where(StoredBlob.key == key))
+        ).scalar_one_or_none() is None
+    assert path.read_bytes() == body

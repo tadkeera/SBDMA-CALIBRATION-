@@ -14,12 +14,18 @@ Contract
   is missing does :func:`materialise` restore it from the database, and it verifies the
   restored bytes against the recorded ``sha256`` before the caller sees them.
 * **Nothing here raises on the read path.** A restore that fails returns ``False`` and
-  the caller keeps its existing behaviour ("file not found", re-hashed mismatch is
-  reported) rather than turning a missing logo into a 500.
+  the caller keeps its existing behaviour ("file not found") rather than turning a
+  missing logo into a 500.
 
-Uses its own short-lived sessions: a restore triggered while serving a download must
-not extend the request's transaction, and a mirror write must commit even if the
-request transaction is later rolled back — the file is already on disk either way.
+Connection discipline
+---------------------
+A managed provider's session pooler allows a fixed number of clients across *all*
+instances of the function — Supabase: 15. Opening a second connection from inside a
+request that already holds one is how a deployment exhausts its pool; in production it
+surfaced as ``EMAXCONNSESSION: max clients reached in session mode`` and a 500 on the
+weekly KPI job. So every write path passes the request's session, and the copy becomes
+part of the transaction that files the document. Only the restore path opens its own
+short-lived session, and it fails soft.
 """
 
 from __future__ import annotations
@@ -27,9 +33,10 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import Final
+from typing import Any, Final
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.database import SessionFactory
@@ -57,11 +64,20 @@ def _local_path(key: str) -> Path:
     return candidate
 
 
-async def mirror(key: str, *, content_type: str | None = None, body: bytes | None = None) -> None:
+async def mirror(
+    key: str,
+    *,
+    content_type: str | None = None,
+    body: bytes | None = None,
+    session: AsyncSession | None = None,
+) -> None:
     """Persist the bytes at ``key`` to the database (no-op without the backend).
 
-    ``body`` lets a caller hand over bytes it already has in memory (a generated PDF)
+    ``body`` lets a caller hand over bytes it already has in memory (a generated PDF),
     so nothing is read twice; otherwise the file is read from the storage root.
+
+    ``session`` is the request's session wherever there is one: the copy then commits
+    with the row that points at it, and no second connection is opened.
     """
     if not durable_storage_enabled():
         return
@@ -72,44 +88,65 @@ async def mirror(key: str, *, content_type: str | None = None, body: bytes | Non
             return
         body = path.read_bytes()
     digest = hashlib.sha256(body).hexdigest()
-    async with SessionFactory() as session:
-        existing = await session.get(StoredBlob, key)
-        if existing is None:
-            session.add(
-                StoredBlob(
-                    key=key,
-                    sha256=digest,
-                    size_bytes=len(body),
-                    content_type=content_type,
-                    body=body,
-                )
+
+    if session is not None:
+        await _write_row(session, key, digest, body, content_type)
+        return
+    async with SessionFactory() as own_session:
+        await _write_row(own_session, key, digest, body, content_type)
+        await own_session.commit()
+
+
+async def _write_row(
+    session: AsyncSession,
+    key: str,
+    digest: str,
+    body: bytes,
+    content_type: str | None,
+) -> None:
+    existing = await session.get(StoredBlob, key)
+    if existing is None:
+        session.add(
+            StoredBlob(
+                key=key,
+                sha256=digest,
+                size_bytes=len(body),
+                content_type=content_type,
+                body=body,
             )
-        else:
-            # same key, different bytes: the platform re-files identical content under
-            # the same hash-named path, so this means a genuine replacement (a new logo)
-            existing.sha256 = digest
-            existing.size_bytes = len(body)
-            existing.content_type = content_type or existing.content_type
-            existing.body = body
-        await session.commit()
+        )
+        return
+    # same key, different bytes: a replaced logo, or a regenerated register. The row is
+    # updated, never duplicated — the key is the path the record points at.
+    existing.sha256 = digest
+    existing.size_bytes = len(body)
+    existing.content_type = content_type or existing.content_type
+    existing.body = body
 
 
-async def materialise(key: str, *, expected_sha: str | None = None) -> bool:
+async def materialise(
+    key: str,
+    *,
+    expected_sha: str | None = None,
+    session: AsyncSession | None = None,
+) -> bool:
     """Ensure ``key`` exists on the local filesystem; restore it from the database.
 
     Returns ``True`` when the file is available afterwards. A restore whose bytes do
-    not match ``expected_sha`` is discarded and reported as unavailable: serving
-    altered evidence is worse than reporting it missing.
+    not match ``expected_sha`` is refused: serving altered evidence is worse than
+    reporting it missing.
     """
     path = _local_path(key)
     if path.is_file():
         return True
     if not durable_storage_enabled():
         return False
-    async with SessionFactory() as session:
-        row = (
-            await session.execute(select(StoredBlob).where(StoredBlob.key == key))
-        ).scalar_one_or_none()
+
+    try:
+        row = await _fetch(key, session)
+    except Exception as exc:  # a restore must never turn a missing file into a 500
+        logger.warning("blob restore could not reach the store for %s: %s", key, exc)
+        return False
     if row is None:
         return False
     if expected_sha and row.sha256 != expected_sha:
@@ -128,28 +165,51 @@ async def materialise(key: str, *, expected_sha: str | None = None) -> bool:
     return True
 
 
-async def read_bytes(key: str, *, expected_sha: str | None = None) -> bytes | None:
+async def _fetch(key: str, session: AsyncSession | None) -> StoredBlob | None:
+    stmt = select(StoredBlob).where(StoredBlob.key == key)
+    if session is not None:
+        return (await session.execute(stmt)).scalar_one_or_none()
+    async with SessionFactory() as own_session:
+        return (await own_session.execute(stmt)).scalar_one_or_none()
+
+
+async def read_bytes(
+    key: str,
+    *,
+    expected_sha: str | None = None,
+    session: AsyncSession | None = None,
+) -> bytes | None:
     """Bytes for ``key``, restoring from the database when the disk copy is gone."""
-    await materialise(key, expected_sha=expected_sha)
+    await materialise(key, expected_sha=expected_sha, session=session)
     path = _local_path(key)
     return path.read_bytes() if path.is_file() else None
 
 
-async def forget(key: str) -> None:
+async def forget(key: str, *, session: AsyncSession | None = None) -> None:
     """Drop the durable copy (used when an unregistered upload is discarded)."""
     if not durable_storage_enabled():
         return
-    async with SessionFactory() as session:
-        await session.execute(delete(StoredBlob).where(StoredBlob.key == key))
-        await session.commit()
+    stmt = delete(StoredBlob).where(StoredBlob.key == key)
+    if session is not None:
+        await session.execute(stmt)
+        return
+    async with SessionFactory() as own_session:
+        await own_session.execute(stmt)
+        await own_session.commit()
 
 
-async def usage() -> dict[str, int]:
+async def usage(*, session: AsyncSession | None = None) -> dict[str, Any]:
     """How much the durable copy holds — the first number an operator asks for."""
-    from sqlalchemy import func
 
-    async with SessionFactory() as session:
+    async def _read(active: AsyncSession) -> dict[str, Any]:
         rows, total = (
-            await session.execute(select(func.count(), func.coalesce(func.sum(StoredBlob.size_bytes), 0)))
+            await active.execute(
+                select(func.count(), func.coalesce(func.sum(StoredBlob.size_bytes), 0))
+            )
         ).one()
-    return {"blobs": int(rows), "bytes": int(total)}
+        return {"blobs": int(rows), "bytes": int(total)}
+
+    if session is not None:
+        return await _read(session)
+    async with SessionFactory() as own_session:
+        return await _read(own_session)

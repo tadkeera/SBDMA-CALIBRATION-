@@ -107,7 +107,9 @@ class BrandingService:
             # the logo is filed evidence of the letterhead: on a serverless platform the
             # file is in /tmp and gone after a cold start, so restore it from the
             # database before deciding the letterhead has no logo
-            await blobstore.materialise(logo["storage_path"], expected_sha=logo.get("sha256"))
+            await blobstore.materialise(
+                logo["storage_path"], expected_sha=logo.get("sha256"), session=self.session
+            )
             path = Path(get_settings().storage_path) / logo["storage_path"]
             if path.is_file():
                 body = path.read_bytes()
@@ -211,7 +213,9 @@ class BrandingService:
         staging = target.with_suffix(target.suffix + ".part")
         staging.write_bytes(body)
         staging.replace(target)
-        await blobstore.mirror(relative, content_type=stored_type, body=body)
+        await blobstore.mirror(
+            relative, content_type=stored_type, body=body, session=self.session
+        )
         # a previous upload with another extension must not linger
         for other in root.glob("logo.*"):
             if other.name != target.name and not other.name.endswith(".part"):
@@ -279,7 +283,7 @@ class BrandingService:
             for path in root.glob("logo.*"):
                 path.unlink(missing_ok=True)
         if (previous or {}).get("storage_path"):
-            await blobstore.forget(previous["storage_path"])
+            await blobstore.forget(previous["storage_path"], session=self.session)
         await self.audit.record(
             action="REPORT_LOGO_REMOVED",
             entity_type="system_setting",
