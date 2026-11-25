@@ -1,0 +1,10 @@
+# Uploaded but never needed at runtime: tests, CI config and internal docs.
+# Keeping the upload small keeps cold starts short.
+.github/
+docs/
+tests/
+backend/tests/
+infra/
+e2e_live.py
+*.md
+!README.md

@@ -149,11 +149,19 @@ async def worker_status(principal: PrincipalDep):
     registered = sorted(
         name for name in celery_app.tasks if name.startswith("sbdma.")
     )
+    from app.core.config import get_settings as _get_settings
+
+    mode = _get_settings().scheduler
     return ok(
         {
+            "scheduler": mode,
+            # On a serverless deployment there is no beat process: the schedule is
+            # vercel.json's `crons`, and reporting beat's schedule here would describe
+            # a scheduler that is not running.
+            "scheduler_source": "vercel.json (crons)" if mode == "vercel-cron" else "celery beat",
             "broker_configured": bool(celery_app.conf.broker_url not in (None, "memory://")),
             "broker": celery_app.conf.broker_url,
-            "scheduled": schedule,
+            "scheduled": [] if mode == "vercel-cron" else schedule,
             "registered_tasks": registered,
             "note_ar": "الإشعارات تُخزَّن داخل التطبيق؛ لا مزوّد بريد مُعدّ بعد.",
             "note_en": "Notices are stored in-app; no mail provider is wired yet.",

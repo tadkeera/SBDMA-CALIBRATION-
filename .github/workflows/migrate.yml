@@ -1,0 +1,43 @@
+name: Database migration (manual)
+
+# Migrations are a deliberate, supervised step — not something a deploy hook runs
+# twice in parallel. Triggered by hand from the Actions tab, against whatever
+# DATABASE_URL the environment secret holds (staging or production).
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type the target word to confirm (staging|production)'
+        required: true
+        type: string
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.confirm }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install runtime dependencies
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: Show current revision
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: python -m alembic current
+      - name: Upgrade to head
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: python -m alembic upgrade head
+      - name: Confirm head
+        working-directory: backend
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+        run: python -m alembic current

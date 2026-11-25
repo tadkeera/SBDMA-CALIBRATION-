@@ -7,6 +7,7 @@ from app.api.v1 import (
     catalogue,
     deviations,
     health,
+    internal,
     notifications,
     reports,
     runs,
@@ -22,5 +23,7 @@ api_router.include_router(reports.router)
 api_router.include_router(users.router)
 api_router.include_router(deviations.router)
 api_router.include_router(notifications.router)
+# scheduled work for serverless deployments — guarded by CRON_SECRET, not by a session
+api_router.include_router(internal.router)
 
 __all__ = ["api_router"]

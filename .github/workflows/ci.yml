@@ -1,0 +1,142 @@
+name: CI
+
+# What this guards: the suite was green only on the machine where it was written.
+# A clean clone produced 55 errors and 17 failures (see CHANGELOG 1.7.0), because a
+# pinned test plugin ignored the loop-scope setting and the fixtures derived password
+# variable names the seeder never reads. A test suite nobody else can run is not a
+# test suite; this workflow runs it from scratch on every push.
+#
+# Services are real, not mocked: the tests exercise PostgreSQL triggers, the audit
+# chain's advisory lock and the shared rate-limit window. Those are the parts that
+# break in production and the parts a mock would happily certify.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # deliberately weak: this is a throwaway database inside the runner
+  DATABASE_URL: postgresql+asyncpg://sbdma:sbdma_dev_pw@127.0.0.1:5432/sbdma_test
+  TEST_DATABASE_URL: postgresql+asyncpg://sbdma:sbdma_dev_pw@127.0.0.1:5432/sbdma_test
+  REDIS_URL: redis://127.0.0.1:6379/0
+  ENVIRONMENT: test
+  COOKIE_SECURE: 'false'
+  LOG_JSON: 'false'
+
+jobs:
+  backend:
+    name: Backend — pytest on PostgreSQL 16 + Redis 8
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sbdma
+          POSTGRES_PASSWORD: sbdma_dev_pw
+          POSTGRES_DB: sbdma_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sbdma -d sbdma_test"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:8-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+
+      - name: Install runtime + test dependencies
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Prove the runtime requirements are sufficient on their own
+        # A dependency used by the app but listed only in requirements-dev would pass
+        # here and fail in the container. Importing the app in a clean env catches it.
+        working-directory: backend
+        run: python -c "from app.main import app; print('app imports:', app.title)"
+
+      - name: Seed credentials for the suite
+        working-directory: backend
+        run: |
+          python - <<'PY' >> "$GITHUB_ENV"
+          import secrets
+          print(f"JWT_SECRET={secrets.token_urlsafe(48)}")
+          print(f"MFA_ENCRYPTION_KEY={secrets.token_urlsafe(48)}")
+          PY
+
+      - name: pytest with coverage gate
+        working-directory: backend
+        run: |
+          # .coveragerc pins core=sysmon; with the C tracer the same suite measures
+          # ~34% for app/services/run_service.py instead of ~89%, because frames that
+          # resume after SQLAlchemy's greenlet bridge are not reported.
+          pytest -q --cov --cov-report=term --cov-report=xml --cov-fail-under=85
+
+      - name: Upload coverage
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-xml
+          path: backend/coverage.xml
+
+  frontend:
+    name: Frontend — types, unit tests, production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
+      - run: npx vitest run
+      - name: Production build
+        run: npx next build
+        env:
+          NEXT_TELEMETRY_DISABLED: '1'
+
+  deployment-config:
+    name: Deployment configuration is valid
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: vercel.json parses and matches the official schema
+        run: |
+          pip install jsonschema httpx
+          python - <<'PY'
+          import json, urllib.request, jsonschema
+          schema = json.load(urllib.request.urlopen("https://openapi.vercel.sh/vercel.json"))
+          config = json.load(open("vercel.json"))
+          jsonschema.Draft202012Validator(schema).validate(config)
+          print("vercel.json valid; services:", list(config["services"]))
+          PY
+      - name: docker-compose parses and its worker command resolves
+        run: |
+          pip install pyyaml
+          python - <<'PY'
+          import yaml
+          compose = yaml.safe_load(open("docker-compose.yml"))
+          for name in ("api", "worker", "beat", "web", "postgres", "redis", "nginx"):
+              assert name in compose["services"], f"missing service {name}"
+          print("compose valid; services:", list(compose["services"]))
+          PY

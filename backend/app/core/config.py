@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # --- application ---
     app_name: str = "SBDMA Laboratory Calibration & OQ Platform"
     # kept in step with /VERSION; surfaced by /health and the OpenAPI metadata
-    app_version: str = "1.7.0"
+    app_version: str = "1.8.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     debug: bool = False
@@ -73,6 +73,17 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = 120
     rate_limit_auth_per_minute: int = 5
     rate_limit_window_seconds: int = 60
+
+    # --- scheduled work ---
+    # "celery" is a container deployment with a beat scheduler; "vercel-cron" means
+    # the schedule lives in vercel.json and calls /api/v1/internal/jobs/*. The
+    # difference is reported by /worker/status so the UI cannot claim a scheduler
+    # that is not running.
+    scheduler: Literal["celery", "vercel-cron"] = "celery"
+    # Shared secret for the HTTP-scheduled routes. Unset means those routes refuse to
+    # run (503): an unauthenticated endpoint that writes notifications and files
+    # reports is a way in, not a convenience.
+    cron_secret: str | None = None
 
     # --- integrations (optional, never required to boot) ---
     redis_url: str | None = None

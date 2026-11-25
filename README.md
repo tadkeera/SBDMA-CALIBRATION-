@@ -1,7 +1,7 @@
 # SBDMA · نظام إدارة ومعايرة الأجهزة المخبرية
 ### Laboratory Calibration & OQ Intelligence Platform — Supreme Board of Drugs & Medical Devices
 
-[![Version](https://img.shields.io/badge/version-1.7.0-21695e)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.8.0-21695e)](VERSION)
 [![ISO/IEC 17025](https://img.shields.io/badge/ISO%2FIEC-17025-21695e)](#الامتثال-التنظيمي)
 [![21 CFR Part 11](https://img.shields.io/badge/21%20CFR-Part%2011-21695e)](#الامتثال-التنظيمي)
 [![Tests](https://img.shields.io/badge/tests-102%20passing-16794f)](#الاختبارات-المنفذة)
@@ -138,10 +138,28 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 - التوثيق التفاعلي: `http://localhost:8000/api/docs`
 - فحص الجاهزية الحقيقي (يتصل بـ PostgreSQL فعلاً): `GET /api/v1/health/ready`
-- الاختبارات: `cd backend && pytest -q` → **105 ناجحاً** على قاعدة `sbdma_test` حقيقية تُبنى بالترحيلات.
+- الاختبارات: `cd backend && pytest -q` → **209 ناجحاً** على قاعدة `sbdma_test` حقيقية تُبنى بالترحيلات.
 
 > **ملاحظة أمنية:** الحسابات المزروعة تحمل `must_change_password=true`، وكل من طلب
 > `change-password` يُبطل جميع جلساته القائمة.
+
+## النشر على Vercel
+
+الواجهة والـAPI يُنشران في **مشروع Vercel واحد** كخدمتين (Vercel Services):
+
+```
+https://<project>.vercel.app/            →  web   (Next.js من جذر المستودع)
+https://<project>.vercel.app/api/v1/*    →  api   (FastAPI من backend/، entrypoint: app/main.py)
+```
+
+الواجهة تنادي الـAPI على نطاقها نفسه، فالكوكيز `SameSite=Strict` تعمل بلا CORS.
+وملصقة Vercel لا تُشغّل عملية دائمة، فالجَدولة عبر **Vercel Cron** إلى مسارين محميين
+بـ`CRON_SECRET` ينادوان نفس خدمتَي الإشعارات والتقرير التي يناديها عامل Celery — لا
+منطق مكرَّر.
+
+الدليل الكامل (متغيّرات البيئة، الترحيل، القيود الصريحة): [`docs/vercel-deployment.md`](docs/vercel-deployment.md).
+للتشغيل الفعلي في المختبر (عامل + تخزين ثابت + نسخ احتياطي) استخدم `docker-compose.yml`
+كما في `docs/deployment.md`.
 
 ## الاختبارات المنفذة
 
@@ -149,7 +167,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 |---|---|---|---|
 | محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npx vitest run` |
 | طبقة التكيّف مع الخادم (TypeScript) | 15 | ✅ ناجحة | `npx vitest run` |
-| محرك الحسابات + API + الحوكمة + التقارير + المرفقات (Python/PostgreSQL) | 105 | ✅ ناجحة | `cd backend && pytest` |
+| محرك الحسابات + API + الحوكمة + التقارير + المرفقات + حدّ الطلبات + حراسة النشر (Python/PostgreSQL/Redis) | 209 | ✅ ناجحة | `cd backend && pytest` |
+| بوابة CI (PostgreSQL 16 + Redis 8 خدميين، تغطية ≥ 85%) | 3 وظائف | ✅ | `.github/workflows/ci.yml` |
 | الجولة الكاملة في متصفح حقيقي (Playwright/Chromium) | 1 سيناريو | ✅ دخول ← تشغيل ← مراجعة ← اعتماد ← تنزيل الشهادة | `python3 sbdma-platform/e2e_live.py` |
 
 التغطية تشمل: أولويات العمليات، صيغ التدفق والتدرج والحقن الوزني، OLS، `%RSD`، الحساسية

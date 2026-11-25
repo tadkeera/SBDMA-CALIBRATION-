@@ -1,0 +1,16 @@
+[run]
+# sys.monitoring, explicitly. The C tracer (ctrace) loses every frame that resumes
+# after SQLAlchemy's greenlet bridge returns from an `await session.execute(...)`:
+# the same suite measured 34% for app/services/run_service.py with ctrace and 89%
+# with sysmon. A coverage gate measured by a tracer that cannot see the code it is
+# gating is worse than no gate.
+core = sysmon
+source = app/core, app/services
+
+[report]
+exclude_lines =
+    pragma: no cover
+    if TYPE_CHECKING:
+    raise NotImplementedError
+show_missing = True
+skip_covered = False

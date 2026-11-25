@@ -30,3 +30,7 @@ backups/
 # local database dumps and seed credential dumps
 *.sql.gz
 sbdma-seed-credentials.txt
+
+# coverage artefacts
+.coverage
+coverage.xml

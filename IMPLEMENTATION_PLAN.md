@@ -2,7 +2,7 @@
 
 > المرجع الملزم: `SBDMA_Calibration_Master_Prompt.txt` (المعمارية والتقنيات والبنود 01–34)
 > المرجع العلمي: `HPLC_LC2050C_UV_Calibration_Protocol_and_Comparative_Report.docx`
-> الحالة بتاريخ 2026-11-25 — الإصدار `1.7.0`
+> الحالة بتاريخ 2026-11-25 — الإصدار `1.8.0`
 > تقييم موقع المشروع من المراحل العشر، بدليله: `docs/phase-status-assessment.md`
 
 ---
@@ -24,8 +24,8 @@
 | 06 | الوحدات الأساسية + Run Calibration + مصفوفة الأعطال | ✅ مكتملة (واجهة+محرك) | 13 نموذج اختبار ديناميكي · حساب كامل · مصفوفة 6 مكونات | `src/app/lab/page.tsx`, `src/core/protocol.ts` |
 | 07 | التكاملات ومهام Celery (PDF/Excel/QR/إشعارات) | 🟢 منجزة عدا بندين معلَنين | شهادة PDF + XLSX للنتائج والتدقيق + تقرير KPIs أسبوعي + إشعارات انتهاء يومية على Redis حقيقي. **متبقٍّ ومُعلَن:** تحليل LabSolutions، تنبيهات لمبة D2، إرسال بريد/SMS | `backend/app/tasks/*`, `backend/app/services/export_service.py` |
 | 08 | الواجهة الأمامية (RTL/LTR + Theme + 4 لوحات + ECharts) | ✅ مكتملة | 7 مسارات · RTL افتراضي · Light/Dark · 8 أنواع مخططات علمية | `src/app/**`, `src/components/**` |
-| 09 | الأمان + الاختبارات الشاملة | 🟡 **قيد الإنجاز — موقع المشروع اليوم** | **200 اختبار pytest** على PostgreSQL 17 + Redis 8 · حدّ طلبات **مشترك** عبر Redis (1.7.0) · Security headers · CSP · المتبقي: بوابة تغطية CI، E2E آلي داخل المستودع، اختبار حمل | `backend/tests/`, `tests/` |
-| 10 | التجهيز للإنتاج + التوثيق | 🟡 قيد الإنجاز | `docker-compose.yml` (7 خدمات، Redis 8، عامل+beat بأمر صحيح وفحوص صحة) · Dockerfile ×2 · Nginx+CSP · K8s (Deployments/HPA/PDB/Rolling) · سكربتات نسخ واستعادة · 11 وثيقة. **عيب أُصلح في 1.7.0:** الحِزمة كانت تُشغّل `app.workers` غير الموجود ⇒ صفر عامل في أي نشر حقيقي | `infra/`, `docker-compose.yml`, `docs/` |
+| 09 | الأمان + الاختبارات الشاملة | 🟡 قيد الإنجاز (9/12) | **209 اختبار pytest** على PostgreSQL + Redis حقيقيين · **بوابة CI** (PostgreSQL 16 + Redis 8) · تغطية **90%** مقيسة بتريسر `sysmon` · حدّ طلبات مشترك · المتبقي: E2E آلي داخل المستودع، اختبار حمل | `.github/workflows/ci.yml`, `backend/tests/` |
+| 10 | التجهيز للإنتاج + التوثيق | 🟡 قيد الإنجاز (نشر Vercel جاهز — 1.8.0) | `docker-compose.yml` (7 خدمات، Redis 8، عامل+beat بأمر صحيح وفحوص صحة) · Dockerfile ×2 · Nginx+CSP · K8s (Deployments/HPA/PDB/Rolling) · سكربتات نسخ واستعادة · 11 وثيقة. **عيب أُصلح في 1.7.0:** الحِزمة كانت تُشغّل `app.workers` غير الموجود ⇒ صفر عامل في أي نشر حقيقي | `infra/`, `docker-compose.yml`, `docs/` |
 
 ---
 

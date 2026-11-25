@@ -9,6 +9,10 @@ curl -fsS http://localhost/api/v1/health | jq
 ```
 الخدمات: `postgres`, `redis`, `api`, `worker`, `beat`, `web`, `nginx`.
 
+> **Vercel:** نشر الواجهة والـAPI كخدمتين في مشروع Vercel واحد (Services) مع جدولة عبر
+> Cron بدل beat — الدليل والقيود: `docs/vercel-deployment.md`. هذا الملف (Docker) هو
+> المسار الموصى به للتشغيل الفعلي في المختبر لأنه يحتفظ بالعامل والتخزين الثابت.
+
 > **أمر العامل والمُجدول:** `celery -A app.worker.celery_app:celery_app …`. الحِزمة
 > `app.worker` (بالمفرد) — وقد كان الملفان هنا وهناك يستخدمان `app.workers` وهي حِزمة
 > غير موجودة، فيفشل أي إقلاع حقيقي عند استيراد العامل. `tests/test_infra_wiring.py`

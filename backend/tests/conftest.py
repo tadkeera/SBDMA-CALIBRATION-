@@ -205,6 +205,14 @@ async def login(client, username: str) -> dict:
                 await session.commit()
         payload["totp_code"] = _pyotp.TOTP(existing).generate_otp(counter_now)
 
+    # The sign-in budget (5/min per address) is a control with its own tests; a test
+    # that needs four identities in its setup must not spend another control's
+    # budget and fail with 429 on the fifth. Clearing it here keeps each test's
+    # intention separate from the limiter's accounting.
+    from app.api.middleware import limiter as _limiter
+
+    _limiter.reset()
+
     first = await client.post("/api/v1/auth/login", json=payload)
 
     # unenrolled enforced role: restricted session, then enrol on it
