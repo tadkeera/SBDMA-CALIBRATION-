@@ -201,7 +201,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </div>
           <p className="mt-3 text-center text-[9.5px]" style={{ color: 'var(--text-muted)' }}>
             <a href={DEV_CREDIT_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)', fontWeight: 700 }}>
-              {t('إبداع للاستضافة', 'Ebda3 Hosting')}
+              {t('تذكرة للحلول البرمجية والأنظمة', 'Tadkrah Software Solutions')}
             </a>
           </p>
         </div>
@@ -326,11 +326,11 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <footer className="mt-4 border-t px-4 py-3 text-center text-[10.5px]" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
           <span className="inline-flex items-center gap-1.5">
             <FileBarChart2 size={11} />
-            {t('نظام إدارة ومعايرة الأجهزة المخبرية — الإصدار 1.1.0', 'Laboratory Calibration & OQ Platform — v1.1.0')}
+            {t('نظام إدارة ومعايرة الأجهزة المخبرية — الإصدار 1.8.0', 'Laboratory Calibration & OQ Platform — v1.8.0')}
             <span aria-hidden>·</span>
             {t('تطوير: ', 'Developed by: ')}
             <a href={DEV_CREDIT_URL} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--brand)', fontWeight: 700 }}>
-              {t('إبداع للاستضافة', 'Ebda3 Hosting')}
+              {t('تذكرة للحلول البرمجية والأنظمة', 'Tadkrah Software Solutions')}
             </a>
           </span>
         </footer>

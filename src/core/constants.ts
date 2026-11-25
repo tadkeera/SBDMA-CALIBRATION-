@@ -1,6 +1,6 @@
-export const DEV_CREDIT_AR = 'تطوير: إبداع للاستضافة';
-export const DEV_CREDIT_EN = 'Developed by Ebda3 Hosting';
-export const DEV_CREDIT_URL = 'https://ebda3-k.com';
-export const APP_VERSION = '1.6.0';
+export const DEV_CREDIT_AR = 'تطوير: تذكرة للحلول البرمجية والأنظمة';
+export const DEV_CREDIT_EN = 'Developed by Tadkrah Software Solutions & Systems';
+export const DEV_CREDIT_URL = 'https://link.gettap.co/tadkrah';
+export const APP_VERSION = '1.8.0';
 export const ORG_AR = 'الهيئة العليا للأدوية والمستحضرات الطبية';
 export const ORG_EN = 'Supreme Board of Drugs & Medical Devices (SBDMA)';

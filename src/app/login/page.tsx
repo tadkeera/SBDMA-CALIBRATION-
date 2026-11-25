@@ -113,7 +113,7 @@ export default function LoginPage() {
           <p className="mt-6 text-[10px] opacity-80">
             {t('تطوير: ', 'Developed by: ')}
             <a href={DEV_CREDIT_URL} target="_blank" rel="noopener noreferrer" style={{ color: '#fff', textDecoration: 'underline' }}>
-              {t('إبداع للاستضافة', 'Ebda3 Hosting')}
+              {t('تذكرة للحلول البرمجية والأنظمة', 'Tadkrah Software Solutions')}
             </a>
           </p>
         </div>

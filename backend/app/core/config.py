@@ -37,6 +37,10 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
     db_pool_recycle_seconds: int = 1800
     db_statement_timeout_ms: int = 30_000
+    #: Set when connecting through a transaction-mode pooler (port 6543 on Supabase,
+    #: `?pgbouncer=true` on Neon): such poolers cannot keep prepared statements between
+    #: transactions, so asyncpg's cache must be off or queries fail intermittently.
+    db_disable_prepared_statements: bool = False
 
     # --- security ---
     jwt_secret: str = Field(default="dev_only_insecure_secret_replace_before_production")

@@ -56,14 +56,36 @@
 الدخول في السويت يصفّر النافذة قبل كل دخول، مع تعليق يوضح أن ميزانية الدخول تُختبر في
 ملفها المستقل. الاختبارات الآن مستقلّة عن الترتيب — شرط لأي CI.
 
+### نُشر فعلياً — أول تشغيل حقيقي على السحابة
+- **https://sbdma-calibration.vercel.app** — مشروع Vercel `sbdma-calibration` (خدمتا
+  `web` + `api`)، والجدولة المسجّلة فيه هي `crons` نفسها.
+- **قاعدة البيانات:** Supabase، PostgreSQL 17.12 في `ap-northeast-1`؛ 23 جدولاً و25
+  Trigger عبر `alembic upgrade head`؛ 9 حسابات و7 أدوار و19 صلاحية وبروتوكول
+  13 اختباراً و108 حدود.
+- **مستخدم قاعدة بيانات مخصّص** `sbdma_app` (لا `postgres`) عبر Session pooler،
+  وحُجب مخطط `public` عن `anon`/`authenticated` لأن Supabase تعرضه تلقائياً عبر
+  PostgREST — جدول تدقيق مكشوف يُبطل النظام كلّه.
+- **Region `hnd1`** بدل `fra1` بعد معرفة موقع القاعدة: الحساب بجوار البيانات.
+- **عيبان لا يظهران محلياً وأُصلحا:**
+  1. `?sslmode=require` بصيغة libpq يمرّره SQLAlchemy إلى `asyncpg.connect` ⇒
+     `TypeError: unexpected keyword argument 'sslmode'` وفشل الإقلاع على أي قاعدة
+     مُدارة. صار يُترجَم إلى سياق SSL بمعنى libpq نفسه (`require` = تشفير بلا تحقق،
+     `verify-full` = تحقق كامل)، مع اختبارات في `test_db_url_translation.py`.
+  2. تعطيل الـprepared statements لـTransaction pooler (`6543`) صار مدعوماً بـ
+     `DB_DISABLE_PREPARED_STATEMENTS` لمن يضطر إلى ذلك المنفذ.
+- **هوية المطوّر:** `تطوير: تذكرة للحلول البرمجية والأنظمة` مع رابط
+  `https://link.gettap.co/tadkrah` في الواجهة وشاشة الدخول والتذييل و`README`.
+
 ### التحقق
 | البند | النتيجة |
 |---|---|
-| `pytest` (PostgreSQL 17 + Redis 8 محلياً) | **209 ناجحاً** (كانت 200) |
+| `pytest` (PostgreSQL 17 + Redis 8 محلياً) | **214 ناجحاً** (كانت 200) |
 | التغطية (sysmon) | **90%** على `app/core` + `app/services` |
 | `vercel.json` مقابل مخطط Vercel الرسمي | **0 أخطاء** |
 | `tsc` / `vitest` / `next build` | نظيف · 37 · ✓ |
 | تركيب `requirements-dev.txt` في بيئة نظيفة | استيراد التطبيق ناجح · 200 MB |
+| الاتصال بقاعدة Supabase من التطبيق | `23` جدولاً · `5` أقسام · `9` مستخدمين · دخول ناجح |
+| النشر | `sbdma-calibration.vercel.app` — الخدمتان READY |
 
 ## [1.7.0] — 2026-11-25
 

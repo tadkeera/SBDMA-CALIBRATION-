@@ -181,3 +181,57 @@ npm run dev                                   # Next على 3000، يمرّر /a
 وكل مسار في `crons` هو مسار حقيقي في تطبيق FastAPI، والتوجيه يضع `/api` قبل الالتقاط
 العام. مسار cron يشير إلى مسار غير موجود يفشل بصمت في الإنتاج: Vercel ينادي، يحصل على
 404، ولا يبلّغ أحداً.
+
+---
+
+## 7) ما نُشر فعلياً (سجل التنفيذ)
+
+| البند | القيمة |
+|---|---|
+| مشروع Vercel | `sbdma-calibration` (فريق `tadkeeras-projects`) |
+| النطاق العام | **https://sbdma-calibration.vercel.app** |
+| Region | `hnd1` (طوكيو) — **مطابق لموقع قاعدة البيانات**، لا `fra1` |
+| قاعدة البيانات | Supabase، مشروع `SBDMA-CALIBRATION`، PostgreSQL 17.12، `ap-northeast-1` |
+| مستخدم قاعدة البيانات | `sbdma_app` (ليس `postgres`، ولا `SUPERUSER`) عبر **Session pooler** على المنفذ `5432` |
+| المخطط | 23 جدولاً + 25 Trigger، عبر `alembic upgrade head` من خارج Vercel |
+| الحسابات المزروعة | 9 حسابات بأدوارها (7 أدوار · 19 صلاحية) |
+
+### ثلاثة أمور لا تظهر إلا عند النشر على مزوّد مُدار
+
+1. **`sslmode` بصيغة libpq لا يفهمها asyncpg.** رابط Supabase الرسمي ينتهي بـ
+   `?sslmode=require`؛ Alembic (psycopg) يفهمه، لكن SQLAlchemy يمرّر أي بارامتر
+   استعلام غير معروف إلى `asyncpg.connect` ⇒
+   `TypeError: connect() got an unexpected keyword argument 'sslmode'` والإقلاع يفشل.
+   أُضيفت ترجمة صريحة في `app/core/database.py`، وهي تُعطي `sslmode` **معناه في libpq**:
+   `require` = تشفير بلا تحقق من الشهادة (وهذا هو المقصود، وإلا فشل المصافحة بسلسلة
+   شهادات المزوّد)، و`verify-full` = تحقق كامل. اختبارات في
+   `tests/test_db_url_translation.py`.
+2. **الاتصال المباشر IPv6 فقط:** `db.<ref>.supabase.co` غير قابل للوصول من شبكات
+   IPv4 (ومنها دوال Vercel). الحل: pooler (`aws-1-<region>.pooler.supabase.com`)،
+   وبصيغة المستخدم `<role>.<project-ref>`.
+3. **Session pooler (5432) لا Transaction pooler (6543):** الثاني لا يحفظ الـprepared
+   statements بين المعاملات. إن اضطررت إلى `6543` فاضبط
+   `DB_DISABLE_PREPARED_STATEMENTS=true` (مُدعّم ويُترجَم إلى تعطيل كاش asyncpg).
+
+### تحصين Supabase
+Supabase يعرض مخطط `public` تلقائياً عبر PostgREST بمفتاح `anon` العام. جدول تدقيق
+واحد مكشوف بهذه الطريقة يُبطل النظام كله، لذا نُفِّذ بعد الترحيلات:
+```sql
+REVOKE ALL ON SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON ALL TABLES IN SCHEMA public FROM anon, authenticated;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
+```
+تحقّق: `has_table_privilege('anon','public.audit_logs','SELECT')` ⇒ `false`.
+والتطبيق يتصل بدور `sbdma_app` لا بدور `postgres`، فلا يملك صلاحيات فوق ما يحتاجه.
+
+### بيانات الدخول
+تُسلَّم للحساب المسؤول خارج المستودع (لا أسرار في Git). الأدوار
+`SUPER_ADMIN` و`QA_APPROVER` و`TECHNICAL_REVIEWER` تُلزِم التحقق بخطوتين عند أول
+دخول — وهذا سلوك Part 11 المقصود، لا عطل: يُمسح رمز QR بتطبيق مصادقة ثم يُدخل الرمز.
+
+### ما لا يعمل على هذه النسخة (بصراحة)
+- **لا Redis** ⇒ `rate_limit: memory` في `/health`: النافذة لكل نسخة دالة.
+- **`celery: not_configured`** ⇒ الجدولة تعمل عبر Cron فقط (وهي مضبوطة: يومي 05:15
+  وأسبوعي الاثنين 04:30 بتوقيت UTC).
+- **مزوّد بريد غير مربوط** ⇒ الإشعارات داخل التطبيق فقط.
+- **التخزين مؤقت** ⇒ الشهادات تُنزَّل في نفس الطلب؛ لا أرشيف دائم على `/tmp`.

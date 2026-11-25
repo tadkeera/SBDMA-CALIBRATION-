@@ -14,22 +14,41 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": { "service": "api" }
+      "destination": {
+        "service": "api"
+      }
     },
     {
       "source": "/(.*)",
-      "destination": { "service": "web" }
+      "destination": {
+        "service": "web"
+      }
     }
   ],
   "headers": [
     {
       "source": "/(.*)",
       "headers": [
-        { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
-        { "key": "X-Content-Type-Options", "value": "nosniff" },
-        { "key": "X-Frame-Options", "value": "SAMEORIGIN" },
-        { "key": "Referrer-Policy", "value": "strict-origin-when-cross-origin" },
-        { "key": "Permissions-Policy", "value": "camera=(), microphone=(), geolocation=()" }
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000; includeSubDomains; preload"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "SAMEORIGIN"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=()"
+        }
       ]
     }
   ],
@@ -43,5 +62,7 @@
       "schedule": "30 4 * * 1"
     }
   ],
-  "regions": ["fra1"]
+  "regions": [
+    "hnd1"
+  ]
 }
