@@ -44,6 +44,7 @@ class MeOut(ORMModel):
     is_active: bool
     totp_enabled: bool = False
     must_change_password: bool = False
+    mfa_enrolment_required: bool = False
 
 
 class ChangePasswordRequest(BaseModel):
@@ -79,3 +80,41 @@ class CreateUserRequest(BaseModel):
     password: str = Field(min_length=1, max_length=256)
     department_id: uuid.UUID | None = None
     roles: list[str] = Field(min_length=1)
+
+
+class MfaCodeRequest(BaseModel):
+    code: str = Field(min_length=6, max_length=8)
+
+    @field_validator("code")
+    @classmethod
+    def _digits(cls, v: str) -> str:
+        cleaned = "".join(ch for ch in v if ch.isdigit())
+        if len(cleaned) != 6:
+            raise ValueError("رمز التحقق يتكون من 6 أرقام")
+        return cleaned
+
+
+class MfaDisableRequest(BaseModel):
+    # disabling the second factor is what an attacker with a stolen password
+    # would do first, so the password is demanded again alongside the code
+    password: str = Field(min_length=1, max_length=256)
+    code: str = Field(min_length=6, max_length=8)
+
+    @field_validator("code")
+    @classmethod
+    def _digits(cls, v: str) -> str:
+        cleaned = "".join(ch for ch in v if ch.isdigit())
+        if len(cleaned) != 6:
+            raise ValueError("رمز التحقق يتكون من 6 أرقام")
+        return cleaned
+
+
+class MfaRecoveryRequest(BaseModel):
+    username: str = Field(min_length=3, max_length=64)
+    password: str = Field(min_length=1, max_length=256)
+    code: str = Field(min_length=5, max_length=16)
+
+    @field_validator("code")
+    @classmethod
+    def _upper(cls, v: str) -> str:
+        return v.strip().upper()

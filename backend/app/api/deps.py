@@ -11,7 +11,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_session
-from app.core.exceptions import AuthenticationError, PasswordChangeRequiredError
+from app.core.exceptions import (
+    AuthenticationError,
+    MfaEnrolmentRequiredError,
+    PasswordChangeRequiredError,
+)
 from app.core.logging import department_ctx, user_ctx
 from app.core.rbac import Principal
 from app.core.security import decode_token
@@ -19,6 +23,19 @@ from app.models.rbac import RefreshSession
 from app.services.auth_service import load_principal
 
 SessionDep = Annotated[AsyncSession, Depends(get_session)]
+
+#: Endpoints reachable while a role-mandated second factor is not yet enrolled.
+MFA_ENROLMENT_ALLOWED_PATHS: frozenset[str] = frozenset(
+    {
+        "/api/v1/auth/me",
+        "/api/v1/auth/logout",
+        "/api/v1/auth/mfa",
+        "/api/v1/auth/mfa/enrol",
+        "/api/v1/auth/mfa/activate",
+        "/api/v1/auth/mfa/qr.svg",
+        "/api/v1/auth/mfa/recovery",
+    }
+)
 
 #: The only endpoints reachable while a forced password change is outstanding.
 PASSWORD_CHANGE_ALLOWED_PATHS: frozenset[str] = frozenset(
@@ -86,6 +103,11 @@ async def get_principal(request: Request, session: SessionDep) -> Principal:
     # is not attributable to the signer.
     if principal.must_change_password and request.url.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
         raise PasswordChangeRequiredError()
+
+    # Same idea for a missing second factor on a role that requires one: the user
+    # can reach enrolment and nothing else, so they are never stranded.
+    if principal.mfa_enrolment_required and request.url.path not in MFA_ENROLMENT_ALLOWED_PATHS:
+        raise MfaEnrolmentRequiredError()
 
     request.state.principal = principal
     user_ctx.set(principal.username)

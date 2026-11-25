@@ -12,9 +12,18 @@ from app.core.config import get_settings
 from app.core.exceptions import (
     AccountLockedError,
     AuthenticationError,
+    MfaEnrolmentRequiredError,
+    SecondFactorRequiredError,
     ValidationFailedError,
 )
 from app.core.logging import get_logger
+from app.core.mfa import (
+    SecretUndecryptable,
+    decrypt_secret,
+    enforced_roles,
+    mfa_required_for,
+    verify_code,
+)
 from app.core.rbac import ROLE_PERMISSIONS, Principal
 from app.core.security import (
     create_token,
@@ -43,7 +52,13 @@ class AuthService:
         return result.scalar_one_or_none()
 
     async def authenticate(
-        self, *, username: str, password: str, ip: str | None = None, user_agent: str | None = None
+        self,
+        *,
+        username: str,
+        password: str,
+        totp_code: str | None = None,
+        ip: str | None = None,
+        user_agent: str | None = None,
     ) -> tuple[User, Principal, dict[str, str]]:
         user = await self._find_user(username)
         now = datetime.now(timezone.utc)
@@ -112,16 +127,75 @@ class AuthService:
         if rehash:
             user.password_hash = rehash
 
+        # ── second factor (21 CFR Part 11.200(a)(1)(i)) ──────────────────────
+        # Checked *after* the password so a wrong code never reveals that the
+        # password was right, and before the counters are cleared so a failed
+        # code counts toward the same lockout as a failed password.
+        roles = [r.code for r in user.roles] or ["VIEWER"]
+        if user.totp_enabled:
+            matched = None
+            if totp_code:
+                try:
+                    secret = decrypt_secret(user.totp_secret or "")
+                except SecretUndecryptable:
+                    await self.audit.record(
+                        action="MFA_SECRET_UNREADABLE",
+                        entity_type="user",
+                        entity_id=user.id,
+                        actor_label=user.username,
+                        reason="stored TOTP secret could not be decrypted",
+                        ip_address=ip,
+                    )
+                    await self.session.commit()
+                    raise AuthenticationError(
+                        message_ar="تعذّر التحقق من العامل الثاني — راجع مسؤول النظام",
+                        message_en="The second factor could not be verified — contact the administrator",
+                    ) from None
+                matched = verify_code(secret, totp_code, last_used_counter=user.totp_last_counter)
+                if matched is not None:
+                    user.totp_last_counter = matched
+
+            if matched is None:
+                user.failed_login_count += 1
+                if user.failed_login_count >= self.settings.max_failed_logins:
+                    user.locked_until = now + timedelta(minutes=self.settings.lockout_minutes)
+                    user.failed_login_count = 0
+                await self.audit.record(
+                    action="MFA_FAILED",
+                    entity_type="user",
+                    entity_id=user.id,
+                    actor_label=user.username,
+                    reason="missing or invalid second factor" if totp_code else "second factor missing",
+                    ip_address=ip,
+                )
+                await self.session.commit()
+                raise SecondFactorRequiredError()
+        # The role mandates a second factor and this account has not enrolled.
+        # Refusing to sign in at all would strand the user with no way to enrol,
+        # so a session is issued that reaches nothing but the enrolment routes —
+        # the same shape as the forced-password-change gate. See deps.py.
+        enrolment_pending = not user.totp_enabled and mfa_required_for(roles)
+        if enrolment_pending:
+            await self.audit.record(
+                action="MFA_ENROLMENT_REQUIRED",
+                entity_type="user",
+                entity_id=user.id,
+                actor_label=user.username,
+                reason=f"role mandates a second factor: {sorted(set(roles) & enforced_roles())}",
+                ip_address=ip,
+            )
+
         user.failed_login_count = 0
         user.locked_until = None
         user.last_login_at = now
 
-        roles = [r.code for r in user.roles] or ["VIEWER"]
         principal = Principal.build(
             user_id=user.id,
             username=user.username,
             roles=roles,
             department_id=user.department_id,
+            must_change_password=user.must_change_password,
+            mfa_enrolment_required=enrolment_pending,
         )
 
         tokens = await self._issue_tokens(user, principal, ip=ip, user_agent=user_agent)
@@ -294,6 +368,8 @@ async def load_principal(session: AsyncSession, user_id: uuid.UUID) -> Principal
         roles=roles,
         department_id=user.department_id,
         must_change_password=user.must_change_password,
+        # recomputed per request so enrolment takes effect without re-login
+        mfa_enrolment_required=not user.totp_enabled and mfa_required_for(roles),
     )
 
 

@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # --- application ---
     app_name: str = "SBDMA Laboratory Calibration & OQ Platform"
     # kept in step with /VERSION; surfaced by /health and the OpenAPI metadata
-    app_version: str = "1.3.0"
+    app_version: str = "1.4.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     debug: bool = False
@@ -48,6 +48,17 @@ class Settings(BaseSettings):
     argon2_parallelism: int = 4
     max_failed_logins: int = 5
     lockout_minutes: int = 15
+
+    # --- second factor (TOTP) ---
+    # The shared secret is a bearer credential: whoever reads it can produce valid
+    # codes forever, so it is encrypted at rest with a key derived from this value
+    # (Fernet/HKDF). Rotating it invalidates every enrolled authenticator, which is
+    # the correct response to a suspected compromise.
+    mfa_encryption_key: str = Field(default="dev_only_insecure_mfa_key_replace_before_production")
+    mfa_issuer: str = "SBDMA"
+    mfa_enforced_roles: str = "SUPER_ADMIN,SYSTEM_ADMIN,QA_APPROVER,TECHNICAL_REVIEWER"
+    # how many 30s steps of drift to accept on each side (clock skew between phone and server)
+    mfa_valid_window: int = 1
     cookie_secure: bool = True
     cookie_samesite: Literal["strict", "lax", "none"] = "strict"
 

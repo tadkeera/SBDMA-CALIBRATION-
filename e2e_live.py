@@ -65,6 +65,97 @@ def fill_lab_form(page) -> None:
                         locator.first.fill(str(value))
 
 
+def _mfa_code(username: str) -> str:
+    """Compute the account's current TOTP code, as an authenticator app would.
+
+    The walkthrough cannot read a phone, so it derives the code from the enrolled
+    secret. This is a *test* affordance, and the reason the secret is encrypted at
+    rest: reading the database column is not enough to produce a code without the
+    application key.
+    """
+    backend = os.path.join(os.path.dirname(__file__), "backend")
+    if backend not in sys.path:
+        sys.path.insert(0, backend)
+
+    import base64
+    import hashlib
+    from datetime import datetime, timezone
+
+    import psycopg
+    import pyotp
+    from cryptography.fernet import Fernet
+
+    from app.core.config import get_settings
+
+    dsn = os.environ["DATABASE_URL"].replace("postgresql+asyncpg://", "postgresql://")
+    with psycopg.connect(dsn) as conn:
+        row = conn.execute(
+            "SELECT totp_secret, totp_enabled, totp_last_counter FROM users WHERE username = %s",
+            (username,),
+        ).fetchone()
+    # A *pending* enrolment already has a secret but totp_enabled is still false:
+    # the code has to be derived from it to prove possession and activate. So the
+    # only requirement here is that a secret exists.
+    if not row or not row[0]:
+        return ""
+
+    key = Fernet(
+        base64.urlsafe_b64encode(
+            hashlib.sha256(f"sbdma-totp::{get_settings().mfa_encryption_key}".encode()).digest()
+        )
+    )
+    secret = key.decrypt(row[0].encode()).decode()
+
+    totp = pyotp.TOTP(secret)
+    counter = int(totp.timecode(datetime.now(timezone.utc)))
+    if row[2] is not None and counter <= row[2]:
+        counter = row[2] + 1
+    return totp.generate_otp(counter)
+
+
+def sign_in_with_mfa(page, username: str, password: str) -> None:
+    """Sign in, entering a code or completing enrolment when the server asks.
+
+    Three states are possible after the password step:
+      1. signed in                        → done
+      2. a code field appeared (#totp)    → the account is already enrolled
+      3. the enrolment screen appeared    → the role mandates a factor and this
+                                            account has none yet
+    """
+    page.wait_for_selector("#username", timeout=20000)
+    page.fill("#username", username)
+    page.fill("#password", password)
+    page.get_by_role("button", name="دخول").click()
+    page.wait_for_timeout(2000)
+
+    # 2) enrolled: the login form revealed the code field
+    if page.locator("#totp").count():
+        page.fill("#totp", _mfa_code(username))
+        page.get_by_role("button", name="دخول").click()
+        page.wait_for_timeout(2000)
+
+    # 3) not enrolled: the enrolment screen replaces the app. Identified by its
+    #    code field / QR image rather than the heading, which also appears in
+    #    help copy elsewhere in the interface.
+    if page.locator("input[placeholder='000000']").count() or page.locator(
+        'img[alt*="QR"]'
+    ).count():
+        page.wait_for_selector("input[placeholder='000000']", timeout=20000)
+        page.fill("input[placeholder='000000']", _mfa_code(username))
+        page.get_by_role("button", name="تفعيل").click()
+        page.wait_for_timeout(2500)
+        # recovery codes are shown exactly once
+        if page.get_by_text("أكواد الاسترداد").count():
+            ok = page.get_by_role("button", name="تم — سجّل الدخول من جديد")
+            if ok.count():
+                ok.click()
+                page.wait_for_timeout(2000)
+            sign_in_with_mfa(page, username, password)
+            return
+
+    page.wait_for_url(lambda url: "/login" not in url, timeout=20000)
+
+
 def main() -> int:
     failures: list[str] = []
 
@@ -234,12 +325,8 @@ def main() -> int:
                 sign_out.first.click()
                 page.wait_for_timeout(2500)
             go(page, "/login")
-            page.wait_for_selector("#username", timeout=20000)
             page.wait_for_timeout(800)
-            page.fill("#username", credentials[0])
-            page.fill("#password", credentials[1])
-            page.get_by_role("button", name="دخول").click()
-            page.wait_for_url(lambda url: "/login" not in url, timeout=15000)
+            sign_in_with_mfa(page, credentials[0], credentials[1])
             page.wait_for_timeout(2000)
 
         sign_out_and_in(REVIEWER)

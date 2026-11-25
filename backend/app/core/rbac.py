@@ -98,6 +98,9 @@ class Principal:
     #: True while the account still uses an administrator-issued password. Such a
     #: principal may read its own identity and change the password, nothing else.
     must_change_password: bool = False
+    #: True when the role mandates a second factor but the account has not
+    #: enrolled. Such a principal may only reach the enrolment routes.
+    mfa_enrolment_required: bool = False
 
     @classmethod
     def build(
@@ -109,6 +112,7 @@ class Principal:
         department_id: UUID | None,
         session_id: str | None = None,
         must_change_password: bool = False,
+        mfa_enrolment_required: bool = False,
     ) -> "Principal":
         perms: set[str] = set()
         for role in roles:
@@ -121,6 +125,7 @@ class Principal:
             permissions=perms,
             session_id=session_id,
             must_change_password=must_change_password,
+            mfa_enrolment_required=mfa_enrolment_required,
         )
 
     # --- capability checks -------------------------------------------------

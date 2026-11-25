@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { useApp } from './AppProvider';
 import { PasswordChangeGate } from './PasswordChangeGate';
+import { MfaEnrolment } from './MfaEnrolment';
 import { ROLE_LABELS } from '@/core/types';
 import { DEV_CREDIT_URL } from '@/core/constants';
 import { api, ApiError } from '@/core/api/client';
@@ -76,6 +77,10 @@ export function Shell({ children }: { children: React.ReactNode }) {
   // still holding an administrator-issued password. Showing the gate here keeps
   // the user from wandering into 403s with no way forward.
   if (session?.must_change_password) return <PasswordChangeGate />;
+
+  // A role that mandates a second factor cannot reach the app until it is
+  // enrolled: the server refuses everything but the enrolment routes.
+  if (session?.mfa_enrolment_required) return <MfaEnrolment />;
 
   return (
     <div className="flex min-h-screen" style={{ background: 'var(--surface-2)' }}>

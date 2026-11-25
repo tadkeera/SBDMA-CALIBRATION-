@@ -5,7 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
+from sqlalchemy import ARRAY, BigInteger, Boolean, DateTime, ForeignKey, Integer, String, UniqueConstraint
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -74,8 +74,15 @@ class User(Base, UUIDPrimaryKey, Timestamped, SoftDeletable):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     must_change_password: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    totp_secret: Mapped[str | None] = mapped_column(String(64))
+    #: Fernet-encrypted shared secret; a caller who reads it can mint codes forever
+    totp_secret: Mapped[str | None] = mapped_column(String(255))
     totp_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    #: highest time-step already accepted — TOTP codes are replayable inside their
+    #: 30-second window unless this is enforced
+    totp_last_counter: Mapped[int | None] = mapped_column(BigInteger)
+    totp_enrolled_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Argon2 hashes of the one-time recovery codes; plaintext is shown once
+    totp_recovery_hashes: Mapped[list[str] | None] = mapped_column(ARRAY(String(255)))
 
     department: Mapped[LabDepartment | None] = relationship(back_populates="users")
     roles: Mapped[list[Role]] = relationship(secondary="user_roles", lazy="selectin")

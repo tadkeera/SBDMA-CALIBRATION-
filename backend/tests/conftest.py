@@ -84,6 +84,28 @@ async def prepared_db() -> AsyncIterator[None]:
     await engine.dispose()
 
 
+@pytest.fixture(scope="session", autouse=True)
+async def clear_login_lockouts(prepared_db: None) -> AsyncIterator[None]:
+    """Unlock every account before the suite runs.
+
+    The database is rebuilt once per session and a failed login now commits its
+    counter (that was a real bug — see test_api_users). A previous run that ended
+    mid-attack therefore leaves accounts locked, which would fail the next run for
+    reasons unrelated to the code. This is test-fixture hygiene, not a production
+    path: in production the lockout is cleared by an administrator or by expiry.
+    """
+    from sqlalchemy import text
+
+    from app.core.database import SessionFactory
+
+    async with SessionFactory() as session:
+        await session.execute(
+            text("UPDATE users SET failed_login_count = 0, locked_until = NULL")
+        )
+        await session.commit()
+    yield
+
+
 @pytest.fixture()
 async def client(prepared_db: None) -> AsyncIterator:
     from httpx import ASGITransport, AsyncClient
@@ -102,12 +124,92 @@ async def client(prepared_db: None) -> AsyncIterator:
 
 
 async def login(client, username: str) -> dict:
-    response = await client.post(
-        "/api/v1/auth/login",
-        json={"username": username, "password": PASSWORDS[username]},
-    )
-    assert response.status_code == 200, response.text
-    body = response.json()
+    """Sign in, satisfying a role-mandated second factor when one applies.
+
+    Roles in ``mfa_enforced_roles`` cannot reach anything but the enrolment routes
+    until they hold a factor (that is the Part 11 control). Tests that need such a
+    role therefore enrol transparently here, so every existing test keeps
+    exercising the behaviour it was written for instead of the gate.
+
+    Two states are handled: the account may be *unenrolled* (a restricted session
+    comes back and enrolment happens on it), or already *enrolled* by an earlier
+    test in the same session-wide schema (a code is required up front).
+    """
+    import pyotp
+    from sqlalchemy import select
+
+    from app.core.database import SessionFactory
+    from app.core.mfa import decrypt_secret
+    from app.models.rbac import User
+
+    async def state_for(name: str) -> tuple[str | None, int | None]:
+        """Return (secret, last_used_counter) for an enrolled account."""
+        async with SessionFactory() as session:
+            user = (
+                await session.execute(select(User).where(User.username == name))
+            ).scalar_one_or_none()
+            if user is None or not user.totp_enabled or not user.totp_secret:
+                return None, None
+            return decrypt_secret(user.totp_secret), user.totp_last_counter
+
+    async def secret_for(name: str) -> str | None:
+        async with SessionFactory() as session:
+            user = (
+                await session.execute(select(User).where(User.username == name))
+            ).scalar_one_or_none()
+            if user is None or not user.totp_enabled or not user.totp_secret:
+                return None
+            return decrypt_secret(user.totp_secret)
+
+    payload = {"username": username, "password": PASSWORDS[username]}
+
+    # Pick a code the server will accept *before* sending it. A rejected code is
+    # counted as a failed login (by design), so guessing would lock the fixture
+    # accounts out mid-run.
+    #
+    # The replay guard stores the last accepted time-step. If an earlier login in
+    # this run already spent the current step, the stored counter is at or ahead
+    # of the wall clock and no code can be valid until time moves on. Rather than
+    # sleep 30 seconds per test, the fixture clears that counter: the tests own the
+    # clock, and this is exactly what a real user experiences as "wait for the
+    # next code".
+    existing, last_counter = await state_for(username)
+    if existing is not None:
+        import pyotp as _pyotp
+
+        counter_now = int(
+            _pyotp.TOTP(existing).timecode(
+                __import__("datetime").datetime.now(__import__("datetime").timezone.utc)
+            )
+        )
+        if last_counter is not None and last_counter >= counter_now:
+            async with SessionFactory() as session:
+                await session.execute(
+                    __import__("sqlalchemy").text(
+                        "UPDATE users SET totp_last_counter = NULL WHERE username = :u"
+                    ),
+                    {"u": username},
+                )
+                await session.commit()
+        payload["totp_code"] = _pyotp.TOTP(existing).generate_otp(counter_now)
+
+    first = await client.post("/api/v1/auth/login", json=payload)
+
+    # unenrolled enforced role: restricted session, then enrol on it
+    if first.status_code == 200 and (first.json().get("data") or {}).get(
+        "user", {}
+    ).get("mfa_enrolment_required"):
+        header = {"Authorization": f"Bearer {first.json()['data']['access_token']}"}
+        begun = await client.post("/api/v1/auth/mfa/enrol", headers=header)
+        secret = begun.json()["data"]["secret"]
+        await client.post(
+            "/api/v1/auth/mfa/activate", headers=header, json={"code": pyotp.TOTP(secret).now()}
+        )
+        payload["totp_code"] = pyotp.TOTP(secret).at(int(__import__("time").time()) + 30)
+        first = await client.post("/api/v1/auth/login", json=payload)
+
+    assert first.status_code == 200, first.text
+    body = first.json()
     assert body["success"] is True
     return {
         "token": body["data"]["access_token"],

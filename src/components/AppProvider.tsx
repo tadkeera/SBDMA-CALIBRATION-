@@ -26,7 +26,7 @@ interface AppCtx {
   session: ServerUser | null;
   permissions: string[];
   can: (permission: string) => boolean;
-  signIn: (username: string, password: string) => Promise<UserAccount>;
+  signIn: (username: string, password: string, totpCode?: string) => Promise<UserAccount>;
   signOut: () => Promise<void>;
   authError: string | null;
   working: boolean;
@@ -128,11 +128,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   // ── authentication (server-authoritative) ─────────────────────────────────
   const signIn = useCallback(
-    async (username: string, password: string): Promise<UserAccount> => {
+    async (username: string, password: string, totpCode?: string): Promise<UserAccount> => {
       setAuthError(null);
       setWorking(true);
       try {
-        const result = await api.login(username, password);
+        const result = await api.login(username, password, totpCode);
         setSession(result.user);
         const account = toUserAccount(result.user);
         await db().settings.put({

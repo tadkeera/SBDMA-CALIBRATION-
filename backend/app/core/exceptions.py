@@ -73,6 +73,24 @@ class AccountLockedError(AppError):
     message_en = "Account temporarily locked after repeated failed sign-ins"
 
 
+class SecondFactorRequiredError(AppError):
+    """A code is demanded: either missing, wrong, or already spent."""
+
+    status_code = status.HTTP_401_UNAUTHORIZED
+    code = "SECOND_FACTOR_REQUIRED"
+    message_ar = "التحقق بخطوتين مطلوب — أدخل رمز تطبيق المصادقة"
+    message_en = "A second factor is required — enter your authenticator code"
+
+
+class MfaEnrolmentRequiredError(AppError):
+    """The account's role mandates MFA but the account has not enrolled yet."""
+
+    status_code = status.HTTP_403_FORBIDDEN
+    code = "MFA_ENROLMENT_REQUIRED"
+    message_ar = "دورك يتطلب التحقق بخطوتين — سجّل تطبيق المصادقة أولاً"
+    message_en = "Your role requires two-step verification — enrol an authenticator first"
+
+
 class PasswordChangeRequiredError(AppError):
     status_code = status.HTTP_403_FORBIDDEN
     code = "PASSWORD_CHANGE_REQUIRED"

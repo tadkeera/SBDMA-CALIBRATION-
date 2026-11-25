@@ -162,6 +162,7 @@ export interface ServerUser {
   department_id: string | null;
   department_code?: string | null;
   must_change_password?: boolean;
+  mfa_enrolment_required?: boolean;
 }
 
 export interface ServerInstrument {
@@ -340,10 +341,39 @@ export interface ServerRoleOption {
 
 export const api = {
   // auth
-  login: (username: string, password: string) =>
+  login: (username: string, password: string, totpCode?: string) =>
     request<{ access_token: string; user: ServerUser }>('/auth/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, password, totp_code: totpCode ?? null }),
+    }),
+
+  // second factor (21 CFR Part 11.200(a)(1)(i))
+  mfaStatus: () =>
+    request<{
+      enabled: boolean;
+      enrolled_at: string | null;
+      recovery_codes_remaining: number;
+      pending_enrolment: boolean;
+    }>('/auth/mfa'),
+  mfaEnrol: () =>
+    request<{ secret: string; otpauth_uri: string; digits: number; period_seconds: number }>(
+      '/auth/mfa/enrol',
+      { method: 'POST' },
+    ),
+  mfaActivate: (code: string) =>
+    request<{ enabled: boolean; recovery_codes: string[] }>('/auth/mfa/activate', {
+      method: 'POST',
+      body: JSON.stringify({ code }),
+    }),
+  mfaDisable: (password: string, code: string) =>
+    request<{ enabled: boolean }>('/auth/mfa/disable', {
+      method: 'POST',
+      body: JSON.stringify({ password, code }),
+    }),
+  mfaRecovery: (username: string, password: string, code: string) =>
+    request<{ recovered: boolean; re_enrol_required: boolean }>('/auth/mfa/recovery', {
+      method: 'POST',
+      body: JSON.stringify({ username, password, code }),
     }),
   logout: () => request<{ logged_out: boolean }>('/auth/logout', { method: 'POST' }),
   me: () => request<ServerUser>('/auth/me'),

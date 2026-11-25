@@ -2,9 +2,10 @@
 
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
-import { ArrowRight, Gauge, Languages, Lock, ShieldCheck, User } from 'lucide-react';
+import { ArrowRight, KeyRound, Gauge, Languages, Lock, ShieldCheck, User } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { db } from '@/core/db/database';
+import { ApiError } from '@/core/api/client';
 import { ROLE_LABELS } from '@/core/types';
 import { DEV_CREDIT_URL } from '@/core/constants';
 
@@ -22,6 +23,10 @@ export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [err, setErr] = useState<string | null>(null);
+  // second factor (21 CFR Part 11.200(a)(1)(i)): revealed only when the server
+  // says a code is required, so password-only roles keep the simple form
+  const [needsCode, setNeedsCode] = useState(false);
+  const [code, setCode] = useState('');
 
   // remember the last successful username (never the password)
   useEffect(() => {
@@ -47,12 +52,27 @@ export default function LoginPage() {
       setErr(t('أدخل اسم المستخدم وكلمة المرور.', 'Enter your username and password.'));
       return;
     }
+    if (needsCode) {
+      if (!/^\d{6}$/.test(code.trim())) {
+        setErr(t('رمز التحقق يتكون من 6 أرقام.', 'The verification code is 6 digits.'));
+        return;
+      }
+    }
     try {
-      const account = await signIn(username.trim(), password);
+      const account = await signIn(username.trim(), password, needsCode ? code.trim() : undefined);
       setPassword('');
       notify('success', t('تم تسجيل الدخول', 'Signed in'), ROLE_LABELS[account.role][lang]);
       router.push(account.role === 'QA_APPROVER' ? '/qa' : account.role === 'ENGINEERING_SERVICE' ? '/engineering' : '/');
-    } catch {
+    } catch (error) {
+      // The password was right but a second factor is demanded. Keep the password
+      // so the user only has to supply the code — and never say "wrong password"
+      // here, which would be misleading and would train them to reset it.
+      if (error instanceof ApiError && (error.code === 'SECOND_FACTOR_REQUIRED' || error.code === 'MFA_ENROLMENT_REQUIRED')) {
+        setNeedsCode(error.code === 'SECOND_FACTOR_REQUIRED');
+        setErr(null);
+        setPassword(password);
+        return;
+      }
       setPassword('');
     }
   };
@@ -133,6 +153,27 @@ export default function LoginPage() {
               placeholder="••••••••"
             />
           </div>
+
+          {needsCode && (
+            <>
+              <label className="label" htmlFor="totp">{t('رمز التحقق (6 أرقام)', 'Verification code (6 digits)')}</label>
+              <div className="relative mb-4">
+                <KeyRound size={14} className="absolute top-2.5 ltr:left-2.5 rtl:right-2.5" style={{ color: 'var(--text-muted)' }} />
+                <input
+                  id="totp"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  className="input ps-8 mono tracking-[0.4em]"
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                  onKeyDown={(e) => e.key === 'Enter' && submit()}
+                  placeholder="000000"
+                  autoFocus
+                />
+              </div>
+            </>
+          )}
 
           {(err ?? authError) && (
             <p className="mb-3 rounded-lg px-3 py-2 text-[11.5px] font-semibold" style={{ color: 'var(--fail)', background: 'rgba(180,35,24,.08)' }}>
