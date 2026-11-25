@@ -14,6 +14,7 @@ from app.core.config import get_settings
 from app.core.database import engine
 from app.core.exceptions import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
+from app.core.ratelimit import limiter
 
 settings = get_settings()
 configure_logging(settings.log_level, as_json=settings.log_json)
@@ -33,6 +34,7 @@ async def lifespan(app: FastAPI):  # noqa: ANN201
         },
     )
     yield
+    await limiter.aclose()
     await engine.dispose()
     log.info("stopped")
 

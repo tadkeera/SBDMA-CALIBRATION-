@@ -25,4 +25,10 @@ arabic-reshaper==3.1.0
 python-bidi==0.6.12
 httpx==0.28.1
 pytest==8.3.4
-pytest-asyncio==0.25.2
+# 0.26 is the first release that implements ``asyncio_default_test_loop_scope``, which
+# pytest.ini already set. On 0.25 that key is silently ignored, every test gets a
+# function-scoped loop while the session fixtures keep a session-scoped one, and the
+# asyncpg pool raises "attached to a different loop" — 55 failures on a clean clone.
+pytest-asyncio==0.26.0
+# read by tests/test_infra_wiring.py to read compose and the k8s manifests as data
+pyyaml==6.0.2

@@ -1,14 +1,14 @@
-"""Request correlation, security headers and in-process rate limiting.
+"""Request correlation, security headers and rate limiting.
 
-Redis-backed rate limiting is used in production; the in-memory fallback keeps a
-single-node deployment safe and is explicitly reported by /health.
+The counting itself lives in :mod:`app.core.ratelimit` so the window is shared by
+every replica rather than kept per process; this module only decides *which* budget
+a request draws from, and how a refusal is phrased.
 """
 
 from __future__ import annotations
 
 import time
 import uuid
-from collections import defaultdict, deque
 from collections.abc import Callable
 
 from fastapi import Request, Response
@@ -17,6 +17,7 @@ from starlette.responses import JSONResponse
 
 from app.core.config import get_settings
 from app.core.logging import get_logger, request_id_ctx
+from app.core.ratelimit import limiter
 
 log = get_logger("sbdma.http")
 
@@ -50,65 +51,73 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         return response
 
 
-class SlidingWindowLimiter:
-    def __init__(self) -> None:
-        self._hits: dict[str, deque[float]] = defaultdict(deque)
-
-    def allow(self, key: str, limit: int, window_seconds: int = 60) -> tuple[bool, int]:
-        now = time.monotonic()
-        bucket = self._hits[key]
-        while bucket and now - bucket[0] > window_seconds:
-            bucket.popleft()
-        if len(bucket) >= limit:
-            return False, 0
-        bucket.append(now)
-        return True, limit - len(bucket)
-
-    def reset(self) -> None:
-        self._hits.clear()
-
-
-limiter = SlidingWindowLimiter()
-
-
 class RateLimitMiddleware(BaseHTTPMiddleware):
-    """Auth endpoints get a much tighter budget than the general API."""
+    """Auth endpoints get a much tighter budget than the general API.
+
+    Two exemptions, both deliberate:
+
+    * ``/healthz`` and ``/api/v1/health*`` — the probes are the control plane. A
+      rate-limited health check turns a broker outage into an outage report that
+      cannot be delivered, and a Kubernetes liveness probe that is refused would
+      restart a healthy pod.
+    * anything outside the API prefix — the static frontend is served by nginx.
+    """
 
     def __init__(self, app) -> None:  # noqa: ANN001
         super().__init__(app)
         self.settings = get_settings()
 
-    async def dispatch(self, request: Request, call_next: Callable) -> Response:
-        path = request.url.path
+    def _budget(self, path: str) -> int | None:
+        if path.startswith("/healthz"):
+            return None
+        if path.startswith(f"{self.settings.api_prefix}/health"):
+            return None
         if path.startswith(f"{self.settings.api_prefix}/auth/"):
-            limit = self.settings.rate_limit_auth_per_minute
-        elif path.startswith(self.settings.api_prefix):
-            limit = self.settings.rate_limit_per_minute
-        else:
+            return self.settings.rate_limit_auth_per_minute
+        if path.startswith(self.settings.api_prefix):
+            return self.settings.rate_limit_per_minute
+        return None
+
+    async def dispatch(self, request: Request, call_next: Callable) -> Response:
+        limit = self._budget(request.url.path)
+        if limit is None:
             return await call_next(request)
 
         client = request.client.host if request.client else "unknown"
-        allowed, remaining = limiter.allow(f"{client}:{path}", limit)
-        if not allowed:
+        # The route is part of the key so a burst of ordinary reads cannot consume
+        # the (much smaller) sign-in budget, and vice versa.
+        decision = await limiter.acquire(
+            f"{client}:{request.url.path}",
+            limit,
+            window_seconds=self.settings.rate_limit_window_seconds,
+        )
+        if not decision.allowed:
             return JSONResponse(
                 status_code=429,
                 content={
                     "success": False,
                     "data": None,
-                    "meta": None,
+                    "meta": {"backend": decision.backend},
                     "errors": [
                         {
                             "code": "RATE_LIMITED",
                             "field": None,
                             "message_ar": "تم تجاوز حد الطلبات المسموح — أعد المحاولة بعد دقيقة",
                             "message_en": "Rate limit exceeded — retry in a minute",
-                            "details": {},
+                            "details": {"backend": decision.backend},
                         }
                     ],
                 },
-                headers={"Retry-After": "60", "X-Request-Id": request_id_ctx.get()},
+                headers={
+                    "Retry-After": str(self.settings.rate_limit_window_seconds),
+                    "X-Request-Id": request_id_ctx.get(),
+                    "X-RateLimit-Limit": str(limit),
+                    "X-RateLimit-Remaining": "0",
+                    "X-RateLimit-Backend": decision.backend,
+                },
             )
         response = await call_next(request)
         response.headers["X-RateLimit-Limit"] = str(limit)
-        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Remaining"] = str(decision.remaining)
+        response.headers["X-RateLimit-Backend"] = decision.backend
         return response

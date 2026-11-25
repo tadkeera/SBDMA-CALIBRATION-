@@ -30,7 +30,9 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
       - wal_archive:/var/lib/postgresql/wal_archive
-      - ./infra/scripts/init:/docker-entrypoint-initdb.d:ro
+      # No ./infra/scripts/init mount: the schema belongs to Alembic, and a bind
+      # mount of a directory that is not in the repository silently creates an empty
+      # one on the host, which then looks like configuration that does nothing.
     healthcheck:
       test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-sbdma} -d ${POSTGRES_DB:-sbdma_calibration}']
       interval: 10s
@@ -40,7 +42,9 @@ services:
     networks: [sbdma]
 
   redis:
-    image: redis:7-alpine
+    # Redis 8 is what the worker was verified against (see CHANGELOG 1.6.0). Pinning
+    # the major keeps the broker and the verified behaviour in step.
+    image: redis:8-alpine
     container_name: sbdma-redis
     restart: unless-stopped
     command: ['redis-server', '--appendonly', 'yes', '--maxmemory', '512mb', '--maxmemory-policy', 'allkeys-lru']
@@ -67,11 +71,30 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
       COOKIE_SECURE: ${COOKIE_SECURE:-true}
       SBDMA_SEED_ON_START: ${SBDMA_SEED_ON_START:-false}
+      # One request budget for every replica, held in Redis. "auto" would infer this
+      # from REDIS_URL; stating it makes an accidental fallback to per-process
+      # counting a startup error instead of a silent tripling of the limit.
+      RATE_LIMIT_BACKEND: ${RATE_LIMIT_BACKEND:-redis}
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
     ports:
       - '8000:8000'
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - |
+          import sys, urllib.request
+          try:
+              urllib.request.urlopen("http://127.0.0.1:8000/api/v1/health/live", timeout=3)
+          except Exception:
+              sys.exit(1)
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     logging: *default-logging
     networks: [sbdma]
 
@@ -80,14 +103,35 @@ services:
       context: ./backend
     container_name: sbdma-worker
     restart: unless-stopped
-    command: ['celery', '-A', 'app.workers.celery_app', 'worker', '-l', 'INFO', '--concurrency=4']
+    # `app.workers` never existed — the package is `app.worker`, and the Celery
+    # object is `celery_app` (Celery's auto-discovery looks for `app`, which is why
+    # the symbol is named here rather than relied upon).
+    command:
+      - celery
+      - -A
+      - app.worker.celery_app:celery_app
+      - worker
+      - -l
+      - INFO
+      - --concurrency=2
+      - --max-tasks-per-child=200
     environment:
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sbdma}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sbdma_calibration}
       REDIS_URL: redis://redis:6379/0
       JWT_SECRET: ${JWT_SECRET}
+      PYTHONUNBUFFERED: '1'
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
+    # Asks the broker whether this worker answers, not whether the container lives.
+    healthcheck:
+      test:
+        - CMD-SHELL
+        - celery -A app.worker.celery_app:celery_app inspect ping -d celery@$$HOSTNAME || exit 1
+      interval: 30s
+      timeout: 20s
+      retries: 3
+      start_period: 40s
     logging: *default-logging
     networks: [sbdma]
 
@@ -96,13 +140,33 @@ services:
       context: ./backend
     container_name: sbdma-beat
     restart: unless-stopped
-    command: ['celery', '-A', 'app.workers.celery_app', 'beat', '-l', 'INFO']
+    # Exactly one scheduler: a second beat fires every scheduled notice twice.
+    command:
+      - celery
+      - -A
+      - app.worker.celery_app:celery_app
+      - beat
+      - -l
+      - INFO
+      - --schedule=/var/lib/celery/celerybeat-schedule
     environment:
       REDIS_URL: redis://redis:6379/0
       DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sbdma}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-sbdma_calibration}
       JWT_SECRET: ${JWT_SECRET}
+      PYTHONUNBUFFERED: '1'
     depends_on:
       redis: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+    volumes:
+      # The schedule file records the last run of each periodic task; kept on a
+      # volume so a restart does not replay a night's notices.
+      - beatdata:/var/lib/celery
+    healthcheck:
+      test: ['CMD-SHELL', 'pgrep -f "celery.*beat" > /dev/null || exit 1']
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
     logging: *default-logging
     networks: [sbdma]
 
@@ -138,6 +202,7 @@ volumes:
   pgdata:
   wal_archive:
   redisdata:
+  beatdata:
 
 networks:
   sbdma:

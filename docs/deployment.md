@@ -9,6 +9,15 @@ curl -fsS http://localhost/api/v1/health | jq
 ```
 الخدمات: `postgres`, `redis`, `api`, `worker`, `beat`, `web`, `nginx`.
 
+> **أمر العامل والمُجدول:** `celery -A app.worker.celery_app:celery_app …`. الحِزمة
+> `app.worker` (بالمفرد) — وقد كان الملفان هنا وهناك يستخدمان `app.workers` وهي حِزمة
+> غير موجودة، فيفشل أي إقلاع حقيقي عند استيراد العامل. `tests/test_infra_wiring.py`
+> يقرأ هذه الملفات ويستورد الهدف فعلياً، فلا يعود الخطأ قابلاً للكتابة بصمت.
+
+> **حدّ الطلبات:** يُحسب في Redis (`RATE_LIMIT_BACKEND=redis`) بنافذة منزلقة واحدة تشترك
+> فيها كل نسخ الـAPI. `RATE_LIMIT_BACKEND=auto` مع Redis غير متاح يهبط إلى عدّ محلي:
+> الحد الفعلي يصبح N×المهيّأ، و`/health` يقول `rate_limit: memory(redis-unavailable)`.
+
 ## 2) Kubernetes (إنتاج)
 ```bash
 kubectl create namespace sbdma
@@ -26,7 +35,11 @@ kubectl -n sbdma rollout status deploy/sbdma-api
 - `HorizontalPodAutoscaler` 3→12 نسخة على CPU 70% وذاكرة 80%.
 - `PodDisruptionBudget minAvailable: 2` يحمي من إخلاء العقد.
 - `terminationGracePeriodSeconds: 45` لإكمال الطلبات الجارية.
-- `beat` بنسخة واحدة فقط (تكرار المُجدول يضاعف التنبيهات).
+- `beat` بنسخة واحدة فقط (تكرار المُجدول يضاعف التنبيهات)، وملف جدولته على حجم دائم
+  (`beatdata` في compose، `emptyDir` في K8s) حتى لا تُعاد ليلة كاملة من التنبيهات بعد
+  إعادة تشغيل.
+- `worker` و`beat` في compose لهما فحص صحة حقيقي: `celery inspect ping` للمُعامل،
+  ووجود عملية `beat` للمجدول. حاوية «حيّة» لا تستهلك شيئاً هي العطل الذي يهم.
 
 ## 3) Nginx
 TLS 1.2/1.3 فقط · HSTS preload · CSP صارم · `X-Frame-Options` · `X-Content-Type-Options` ·

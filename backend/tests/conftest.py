@@ -37,8 +37,20 @@ PASSWORDS = {
     "technician": "Tec-Str0ng-Pass!2026",
     "viewer": "Vie-Str0ng-Pass!2026",
 }
+# The seeder reads one environment variable per account, and its names are the
+# authoritative map (``analyst.phys`` is ``SBDMA_ANALYST_PASSWORD``, not
+# ``SBDMA_ANALYST_PHYS_PASSWORD``). Deriving them here by upper-casing the username
+# produced names the seeder never reads, so it fell through to generating random
+# passwords and every test that signed in as those accounts got a 401 — the suite
+# was only green on a machine where the variables happened to be exported already.
+from app.seed.seed_users import SEED_USERS  # noqa: E402
+
+_seed_env_keys = {username: env_key for username, *_rest, env_key in SEED_USERS}
+missing = sorted(set(PASSWORDS) - set(_seed_env_keys))
+if missing:  # pragma: no cover - guards the map above from drifting
+    raise RuntimeError(f"no seeder account for {missing}")
 for user, pw in PASSWORDS.items():
-    os.environ.setdefault(f"SBDMA_{user.upper().replace('.', '_')}_PASSWORD", pw)
+    os.environ[_seed_env_keys[user]] = pw
 
 
 @pytest.fixture(scope="session")

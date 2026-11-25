@@ -1,7 +1,7 @@
 # SBDMA · نظام إدارة ومعايرة الأجهزة المخبرية
 ### Laboratory Calibration & OQ Intelligence Platform — Supreme Board of Drugs & Medical Devices
 
-[![Version](https://img.shields.io/badge/version-1.1.0-21695e)](VERSION)
+[![Version](https://img.shields.io/badge/version-1.7.0-21695e)](VERSION)
 [![ISO/IEC 17025](https://img.shields.io/badge/ISO%2FIEC-17025-21695e)](#الامتثال-التنظيمي)
 [![21 CFR Part 11](https://img.shields.io/badge/21%20CFR-Part%2011-21695e)](#الامتثال-التنظيمي)
 [![Tests](https://img.shields.io/badge/tests-102%20passing-16794f)](#الاختبارات-المنفذة)

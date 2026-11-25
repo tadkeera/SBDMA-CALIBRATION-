@@ -11,6 +11,7 @@ from sqlalchemy import text
 from app.api.deps import PrincipalDep, SessionDep
 from app.core.config import get_settings
 from app.core.database import ping
+from app.core.ratelimit import limiter
 from app.schemas.common import ok
 from app.services.kpi_service import KpiService
 
@@ -61,6 +62,11 @@ async def health(session: SessionDep):
             "postgresql": "up" if db_ok else "down",
             "redis": redis_state,
             "celery": worker_state,
+            # Which policy is actually enforcing the request budget: "redis" is the
+            # shared control, "memory" means each replica counts privately and the
+            # effective limit is N times the configured one. Reporting it is the
+            # difference between a degraded control and an invisible one.
+            "rate_limit": limiter.backend,
             "storage": settings.storage_path,
         },
     }

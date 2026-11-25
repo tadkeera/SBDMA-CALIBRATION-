@@ -4,7 +4,7 @@ metadata:
   name: sbdma-worker
   labels: { app: sbdma-worker, tier: worker }
 spec:
-  replicas: 2
+  replicas: 2   # worker only — beat below is a single replica on purpose
   selector:
     matchLabels: { app: sbdma-worker }
   template:
@@ -14,19 +14,30 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 1001 }
       containers:
         - name: worker
-          image: ghcr.io/tadkeera/sbdma-calibration-api:1.0.0
-          command: ['celery', '-A', 'app.workers.celery_app', 'worker', '-l', 'INFO', '--concurrency=4', '--max-tasks-per-child=200']
+          image: ghcr.io/tadkeera/sbdma-calibration-api:1.7.0
+          command: ['celery', '-A', 'app.worker.celery_app:celery_app', 'worker', '-l', 'INFO', '--concurrency=4', '--max-tasks-per-child=200']
           envFrom:
             - secretRef: { name: sbdma-secrets }
             - configMapRef: { name: sbdma-config }
           resources:
             requests: { cpu: 300m, memory: 768Mi }
             limits:   { cpu: '2',  memory: 2Gi }
+          # Liveness: does this worker answer on the broker? A container that lives
+          # while consuming nothing is the failure mode that matters here.
           livenessProbe:
-            exec: { command: ['celery', '-A', 'app.workers.celery_app', 'inspect', 'ping', '-d', 'celery@$(hostname)'] }
+            exec: { command: ['celery', '-A', 'app.worker.celery_app:celery_app', 'inspect', 'ping', '-d', 'celery@$(hostname)'] }
             initialDelaySeconds: 40
             periodSeconds: 60
             timeoutSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            exec: { command: ['celery', '-A', 'app.worker.celery_app:celery_app', 'inspect', 'ping', '-d', 'celery@$(hostname)'] }
+            initialDelaySeconds: 15
+            periodSeconds: 30
+            timeoutSeconds: 20
+          env:
+            - name: PYTHONUNBUFFERED
+              value: '1'
           volumeMounts: [{ name: storage, mountPath: /srv/storage }]
       volumes:
         - { name: storage, persistentVolumeClaim: { claimName: sbdma-storage } }
@@ -47,11 +58,57 @@ spec:
     spec:
       containers:
         - name: beat
-          image: ghcr.io/tadkeera/sbdma-calibration-api:1.0.0
-          command: ['celery', '-A', 'app.workers.celery_app', 'beat', '-l', 'INFO']
+          image: ghcr.io/tadkeera/sbdma-calibration-api:1.7.0
+          command: ['celery', '-A', 'app.worker.celery_app:celery_app', 'beat', '-l', 'INFO', '--schedule=/var/lib/celery/celerybeat-schedule']
           envFrom:
             - secretRef: { name: sbdma-secrets }
             - configMapRef: { name: sbdma-config }
           resources:
             requests: { cpu: 50m, memory: 128Mi }
             limits:   { cpu: 200m, memory: 256Mi }
+          # The schedule file holds the last-run time of each periodic task; on a
+          # volume so a container restart does not replay a night of notices.
+          volumeMounts: [{ name: beat-schedule, mountPath: /var/lib/celery }]
+      volumes:
+        - name: beat-schedule
+          emptyDir: {}
+---
+# Worker autoscaling on CPU is a placeholder for queue depth: the real signal is the
+# length of the "sbdma" queue, which needs a metrics adapter. CPU is stated, not hidden.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: sbdma-worker
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: sbdma-worker }
+  minReplicas: 2
+  maxReplicas: 8
+  metrics:
+    - type: Resource
+      resource: { name: cpu, target: { type: Utilization, averageUtilization: 75 } }
+  behavior:
+    scaleDown:
+      # A report task can run for minutes (task_time_limit=600); do not evict a
+      # worker mid-task faster than the drain grace period.
+      stabilizationWindowSeconds: 300
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sbdma-worker
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels: { app: sbdma-worker }
+---
+# Beat: never evicted without its replacement — two schedulers at once double every
+# scheduled notice. The dedup unique index keeps the database honest; the inbox is
+# what pays for it.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: sbdma-beat
+spec:
+  maxUnavailable: 0
+  selector:
+    matchLabels: { app: sbdma-beat }

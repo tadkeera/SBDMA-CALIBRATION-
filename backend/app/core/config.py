@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # --- application ---
     app_name: str = "SBDMA Laboratory Calibration & OQ Platform"
     # kept in step with /VERSION; surfaced by /health and the OpenAPI metadata
-    app_version: str = "1.6.0"
+    app_version: str = "1.7.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     debug: bool = False
@@ -66,8 +66,13 @@ class Settings(BaseSettings):
     cors_origins: str = "http://localhost:3000,http://127.0.0.1:3000"
 
     # --- rate limiting ---
+    # The window lives in Redis so that N API replicas enforce one budget instead of
+    # N of them. ``auto`` uses Redis when ``REDIS_URL`` is set, ``memory`` forces the
+    # in-process window (single-node dev, and the tests that assert the fallback).
+    rate_limit_backend: Literal["auto", "redis", "memory"] = "auto"
     rate_limit_per_minute: int = 120
     rate_limit_auth_per_minute: int = 5
+    rate_limit_window_seconds: int = 60
 
     # --- integrations (optional, never required to boot) ---
     redis_url: str | None = None
