@@ -8,6 +8,6 @@ pytest==8.3.4
 # function-scoped loop while the session fixtures keep a session-scoped one, and the
 # asyncpg pool raises "attached to a different loop" — 55 failures on a clean clone.
 pytest-asyncio==0.26.0
-pytest-cov==6.0.0
+pytest-cov==7.1.0
 # read by tests/test_infra_wiring.py to parse compose and the k8s manifests as data
 pyyaml==6.0.2
