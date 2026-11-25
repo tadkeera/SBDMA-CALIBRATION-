@@ -10,6 +10,7 @@ import {
 } from '../src/core/engine/safeMath';
 import { TESTS, LIMITS } from '../src/core/protocol';
 import { evaluateMetric, runCalibration } from '../src/core/engine/runEngine';
+import REFERENCE from '../e2e/fixtures/compliant_inputs.json';
 
 describe('safe AST math engine', () => {
   it('evaluates arithmetic with precedence', () => {
@@ -107,8 +108,8 @@ describe('safe AST math engine', () => {
 
 describe('QA governance guard', () => {
   it('never issues PASS on a CONFLICT_REQUIRES_QA limit', () => {
-    // SOP noise limit is documented as a unit error (GAP-02)
-    const ev = evaluateMetric('T11', 'noise', 0.001, 'SOP_LIMIT', 'mAU');
+    // The iOQ carryover limit is 10× looser than the adopted 0.010% (GAP-08)
+    const ev = evaluateMetric('T12', 'carryover_pct', 0.001, 'IOQ_PROTOCOL_CH4', '%');
     expect(ev.status).toBe('UNDER_REVIEW');
     expect(ev.message).toContain('متعارض');
   });
@@ -124,16 +125,19 @@ describe('QA governance guard', () => {
   });
 
   it('returns UNDER_REVIEW when no limit exists for the chosen source', () => {
-    // carryover_ch2 is only governed by Ch.2 / SOP / AUTHORITY sources
-    const ev = evaluateMetric('T12', 'carryover_ch2', 0.001, 'IOQ_PROTOCOL_CH4', '%');
+    // rt_rsd is governed by Ch.2 and the authority limit only
+    const ev = evaluateMetric('T12', 'rt_rsd', 0.2, 'MANUFACTURER_SPEC', '%');
     expect(ev.status).toBe('UNDER_REVIEW');
     expect(ev.appliedLimitId).toBeNull();
   });
 });
 
 describe('protocol blueprint integrity', () => {
-  it('contains exactly 13 tests', () => {
-    expect(TESTS).toHaveLength(13);
+  it('contains the 20 tests of protocol v2.0.0', () => {
+    expect(TESTS).toHaveLength(20);
+    expect(TESTS.map((t) => t.code)).toEqual(
+      Array.from({ length: 20 }, (_, i) => `T${String(i + 1).padStart(2, '0')}`),
+    );
   });
 
   it('every metric has at least one AUTHORITY_LIMIT', () => {
@@ -157,63 +161,25 @@ describe('protocol blueprint integrity', () => {
     }
   });
 
-  it('flags the defective SOP limits as conflicts', () => {
-    const sopConflicts = LIMITS.filter(
-      (l) => l.sourceType === 'SOP_LIMIT' && l.approvalStatus === 'CONFLICT_REQUIRES_QA',
+  it('keeps the looser iOQ carryover limit as an explicit conflict', () => {
+    const conflicts = LIMITS.filter((l) => l.approvalStatus === 'CONFLICT_REQUIRES_QA');
+    expect(conflicts.map((l) => `${l.testCode}:${l.metricKey}:${l.sourceType}`)).toEqual([
+      'T12:carryover_pct:IOQ_PROTOCOL_CH4',
+    ]);
+    // and the adopted limit is ten times stricter
+    const authority = LIMITS.find(
+      (l) => l.testCode === 'T12' && l.metricKey === 'carryover_pct' && l.sourceType === 'AUTHORITY_LIMIT',
     );
-    expect(sopConflicts.length).toBeGreaterThanOrEqual(4);
+    expect(authority?.maxValue).toBe(0.01);
+    expect(conflicts[0].maxValue).toBe(0.1);
   });
 });
 
 describe('full run engine', () => {
-  const goodInputs = {
-    T01: {
-      wavelength_dev: 0.2,
-      d2_energy: 1517,
-      pulsation: 0.08,
-      oven_stability: 0.05,
-      absorbance_dev: 0.4,
-      noise: 0.008,
-      drift: 0.12,
-      gradient_dev: 0.6,
-      pressure_limiter: 'Passed',
-    },
-    T02: { set_flow: [0.5, 1, 2], collected_vol: [5, 5, 5], actual_time: [599.9, 299.4, 150.1] },
-    T03: { pulsation: 0.09, upper_limiter: 'Passed', lower_limiter: 'Passed' },
-    T04: {
-      height_0: [0, 0, 0],
-      height_10: [10040, 10060, 10020],
-      height_50: [50100, 50200, 49900],
-      height_90: [90200, 90100, 90300],
-      height_100: [100200, 100300, 100100],
-    },
-    T05: { w1: 10.5, w2: 10.0008, water_density: 0.997, set_vol: 50, n_injections: 10 },
-    T06: {
-      volumes: [2, 5, 10, 20, 50],
-      linearity_areas: [1000, 2500, 5000, 10000, 25000],
-      loop_areas: [24950, 25010, 24980, 25005, 24990],
-    },
-    T07: { t_set: 4, t_ref_raw: 4.4, ref_offset: 0.08, wait_minutes: 95, ambient_temp: 26 },
-    T08: { t_set: 40, t_display: 40.1, t_ref_raw: 40.3, ref_offset: 0.05, fluctuation: 0.07, gas_sensor: 'Passed' },
-    T09: { d2_energy: 1517, lamp_hours: 1420, wavelength_dev: 0.3, peak_205: 205.2, valley_245: 244.8, peak_273: 273.4 },
-    T10: { absorbance_dev: 0.5, concs: [20, 30, 40, 50, 60], heights: [0.5, 0.75, 1.0, 1.25, 1.5] },
-    T11: { noise: 0.009, drift: -0.21 },
-    T12: {
-      rt_values: [2.451, 2.449, 2.452, 2.45, 2.448, 2.451],
-      areas: [25010, 24980, 25005, 24995, 25020, 24990],
-      area_blank: 0.02,
-      area_sample_250: 200000,
-      area_sample_50: 40000,
-    },
-    T13: {
-      detector_sensor: 'Passed',
-      pump_sensor: 'Passed',
-      hpv_sensor: 'Passed',
-      lpv_sensor: 'Passed',
-      rack_setting: 'Not Required',
-      port_teaching: 'Not Required',
-    },
-  };
+  // The reference dataset is authored once, in backend/tests/test_api_runs.py, and
+  // exported to this JSON file for the browser, the E2E suite and this test — so a
+  // divergence between the two engines cannot hide behind two hand-kept copies.
+  const goodInputs: Record<string, Record<string, unknown>> = REFERENCE;
 
   it('produces PASS for a compliant instrument', () => {
     const res = runCalibration(goodInputs, { policySource: 'AUTHORITY_LIMIT' });
@@ -240,10 +206,10 @@ describe('full run engine', () => {
     expect(res.overall).toBe('UNDER_REVIEW');
   });
 
-  it('fails a run when a leak sensor reports Failed', () => {
+  it('fails a run when a leak sensor reports FAIL', () => {
     const inputs = {
       ...goodInputs,
-      T13: { ...goodInputs.T13, lpv_sensor: 'Failed' },
+      T13: { ...goodInputs.T13, leak_lpv: 'FAIL' },
     };
     const res = runCalibration(inputs, { policySource: 'AUTHORITY_LIMIT' });
     expect(res.perTest['T13'].status).toBe('FAIL');

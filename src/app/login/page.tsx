@@ -3,8 +3,10 @@
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { ArrowRight, KeyRound, Gauge, Languages, Lock, ShieldCheck, User } from 'lucide-react';
+import { Letterhead } from '@/components/Letterhead';
 import { useApp } from '@/components/AppProvider';
 import { db } from '@/core/db/database';
+import { TESTS } from '@/core/protocol';
 import { ApiError } from '@/core/api/client';
 import { ROLE_LABELS } from '@/core/types';
 import { DEV_CREDIT_URL } from '@/core/constants';
@@ -79,7 +81,13 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center p-4" style={{ background: 'var(--surface-2)' }}>
-      <div className="grid w-full max-w-4xl overflow-hidden rounded-2xl md:grid-cols-2" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+      <div className="w-full max-w-4xl overflow-hidden rounded-2xl" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
+        {/* the official letterhead: this screen is unauthenticated, so it reads the
+            public branding endpoint rather than waiting for a session */}
+        <div style={{ padding: '10px 18px 0' }}>
+          <Letterhead variant="report" />
+        </div>
+        <div className="grid md:grid-cols-2">
         <div
           className="hidden flex-col justify-between p-7 md:flex"
           style={{
@@ -102,7 +110,7 @@ export default function LoginPage() {
                 t('ISO/IEC 17025 — تأهيل تشغيلي موثق', 'ISO/IEC 17025 — documented OQ'),
                 t('21 CFR Part 11 — توقيع إلكتروني وسجل تدقيق', '21 CFR Part 11 — e-signature & audit trail'),
                 t('ALCOA+ — سلامة البيانات والقراءات الخام', 'ALCOA+ — raw data integrity'),
-                t('بروتوكول Shimadzu LC-2050C UV — 13 اختباراً', 'Shimadzu LC-2050C UV — 13 tests'),
+                t(`بروتوكول HPLC — ${TESTS.length} اختباراً`, `HPLC protocol — ${TESTS.length} tests`),
               ].map((x) => (
                 <li key={x} className="flex items-start gap-1.5">
                   <ShieldCheck size={13} className="mt-0.5 shrink-0" /> {x}
@@ -118,7 +126,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <div className="p-6 md:p-8">
+          <div className="p-6 md:p-8">
           <div className="mb-5 flex items-center justify-between">
             <h2 className="text-[15px] font-extrabold">{t('تسجيل الدخول', 'Sign in')}</h2>
             <button className="btn btn-ghost px-2 py-1 text-[11px]" onClick={() => setLang(lang === 'ar' ? 'en' : 'ar')}>
@@ -191,6 +199,7 @@ export default function LoginPage() {
               'The password is verified with Argon2id on the calibration server and the session is stored in httpOnly cookies that JavaScript cannot read. Accounts lock for 15 minutes after 5 failed attempts.',
             )}
           </p>
+          </div>
         </div>
       </div>
     </div>

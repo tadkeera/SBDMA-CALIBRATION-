@@ -9,7 +9,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-export type AccountKey = 'analyst' | 'reviewer' | 'qa' | 'viewer';
+export type AccountKey = 'analyst' | 'reviewer' | 'qa' | 'viewer' | 'admin';
 
 interface AccountFileEntry {
   username: string;
@@ -39,7 +39,10 @@ export const ACCOUNTS: Record<AccountKey, Account> = {
   reviewer: account('reviewer'),
   qa: account('qa'),
   viewer: account('viewer'),
+  // the administrator owns the letterhead (settings.manage) and, like every
+  // administrative role, must present a second factor
+  admin: account('admin'),
 };
 
 /** Roles that mandate a second factor (mirrors `MFA_ENFORCED_ROLES`). */
-export const MFA_ACCOUNTS: AccountKey[] = ['reviewer', 'qa'];
+export const MFA_ACCOUNTS: AccountKey[] = ['reviewer', 'qa', 'admin'];

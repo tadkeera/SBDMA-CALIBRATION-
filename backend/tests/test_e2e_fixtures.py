@@ -28,9 +28,9 @@ def test_e2e_dataset_matches_the_reference_compliant_inputs() -> None:
     """The browser types exactly the dataset the API tests prove is a full PASS."""
     fixture = _load("compliant_inputs.json")
     assert fixture == COMPLIANT_INPUTS
-    assert len(fixture) == 13
+    assert len(fixture) == 20
     # every protocol test has inputs, and every metric key is present
-    assert sum(len(values) for values in fixture.values()) == 61
+    assert sum(len(values) for values in fixture.values()) == 77
 
 
 def test_e2e_accounts_exist_in_the_seed_and_have_passwords() -> None:

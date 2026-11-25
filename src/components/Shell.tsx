@@ -8,7 +8,6 @@ import {
   Beaker,
   Cog,
   FileBarChart2,
-  Gauge,
   Languages,
   LayoutDashboard,
   LogOut,
@@ -20,11 +19,14 @@ import {
   Wrench,
   AlertTriangle,
   BellRing,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
 import { PasswordChangeGate } from './PasswordChangeGate';
 import { MfaEnrolment } from './MfaEnrolment';
 import { ROLE_LABELS } from '@/core/types';
+import { Letterhead, PrintLetterhead } from '@/components/Letterhead';
+import { PROTOCOL_VERSION, TESTS } from '@/core/protocol';
 import { DEV_CREDIT_URL } from '@/core/constants';
 import { api, ApiError } from '@/core/api/client';
 
@@ -50,6 +52,13 @@ const NAV = [
     perm: 'instruments.view' as const,
   },
   { href: '/audit', ar: 'سجل التدقيق', en: 'Audit Trail', icon: ScrollText, perm: 'audit.view' as const },
+  {
+    href: '/settings',
+    ar: 'إعداد الترويسة',
+    en: 'Report Header',
+    icon: ImageIcon,
+    perm: 'settings.manage' as const,
+  },
 ];
 
 export function Shell({ children }: { children: React.ReactNode }) {
@@ -130,21 +139,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
       >
         <div>
-          <div className="flex items-center gap-2.5 px-4 py-4">
-            <div
-              className="flex h-10 w-10 items-center justify-center rounded-xl"
-              style={{ background: 'var(--brand)', color: '#fff' }}
-            >
-              <Gauge size={20} strokeWidth={2.1} />
-            </div>
-            <div className="min-w-0">
-              <p className="truncate text-[12.5px] font-extrabold leading-tight">
-                {t('الهيئة العليا للأدوية', 'Supreme Board of Drugs')}
-              </p>
-              <p className="truncate text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-                SBDMA · Calibration & OQ Platform
-              </p>
-            </div>
+          {/* the official logo, as uploaded in إعداد الترويسة */}
+          <div className="px-4 py-4">
+            <Letterhead variant="compact" />
+            <p className="mt-1 truncate text-[10px] font-semibold" style={{ color: 'var(--text-muted)' }}>
+              SBDMA · Calibration &amp; OQ Platform
+            </p>
           </div>
 
           <nav className="mt-1 space-y-0.5 px-2">
@@ -176,7 +176,9 @@ export function Shell({ children }: { children: React.ReactNode }) {
               <p className="mt-1 font-mono text-[10.5px] leading-snug" style={{ direction: 'ltr' }}>
                 SHIMADZU-LC2050C-UV-CAL
                 <br />
-                <span style={{ color: 'var(--text-muted)' }}>v1.0.0 · 13 tests</span>
+                <span style={{ color: 'var(--text-muted)' }}>
+                  {`v${PROTOCOL_VERSION} · ${TESTS.length} tests`}
+                </span>
               </p>
             </div>
           </div>
@@ -208,6 +210,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
+        {/* every printed page carries the official letterhead, not just the reports */}
+        <PrintLetterhead />
         <header
           className="sticky top-0 z-30 flex items-center justify-between gap-3 border-b px-4 py-2.5 backdrop-blur"
           style={{ background: 'color-mix(in srgb, var(--surface) 88%, transparent)', borderColor: 'var(--border)' }}

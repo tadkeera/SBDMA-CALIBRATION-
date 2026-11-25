@@ -9,7 +9,7 @@ Decimal.set({ precision: 40, rounding: Decimal.ROUND_HALF_UP });
  *   expr    := term (('+' | '-') term)*
  *   term    := factor (('*' | '/' | '%') factor)*
  *   factor  := ('-' | '+')? power
- *   power   := primary ('^' power)?
+ *   power   := primary (('^' | '**') power)?
  *   primary := NUMBER | IDENT '(' args ')' | IDENT | '(' expr ')'
  *
  * Series-aware functions receive number[] and return number | number[].
@@ -83,6 +83,12 @@ export function tokenize(src: string): Token[] {
       i = j;
       continue;
     }
+    // `**` must be tokenised before `*` so power binds as one operator
+    if (c === '*' && src[i + 1] === '*') {
+      tokens.push({ t: 'op', v: '**', pos: i });
+      i += 2;
+      continue;
+    }
     if ('+-*/%^(),'.includes(c)) {
       tokens.push({ t: 'op', v: c, pos: i });
       i++;
@@ -140,8 +146,10 @@ export function parse(src: string): Ast {
   }
   function power(): Ast {
     const base = primary();
-    if (peek() && peek().t === 'op' && (peek() as any).v === '^') {
-      eat('^');
+    // both spellings are accepted: the Python blueprint writes `**`, the older
+    // browser tables used `^`. They mean the same thing and must parse the same way.
+    if (peek() && peek().t === 'op' && ['^', '**'].includes((peek() as any).v)) {
+      eat();
       return { k: 'bin', op: '^', a: base, b: power() };
     }
     return base;

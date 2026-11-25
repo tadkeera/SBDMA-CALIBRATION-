@@ -12,6 +12,7 @@ Ordering of guards (all server-side, deny-by-default):
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
@@ -370,7 +371,13 @@ class RunService:
             scoped = list(domain_tests)
 
         missing_payloads = [t.code for t in scoped if t.mandatory and t.code not in raw_inputs]
-        outcome = execute_run(
+        # The scoring engine is CPU-bound: seventy-five formulas evaluated at thirty
+        # significant digits, with no I/O at all. Run in a thread, because on the
+        # event loop it stalls every other reader in the process — measured at ~1 s
+        # per execution during the load test, during which the whole API stopped
+        # answering. Nothing here touches the session, so the thread is safe.
+        outcome = await asyncio.to_thread(
+            execute_run,
             tests=scoped,
             raw_inputs=raw_inputs,
             limits=domain_limits,

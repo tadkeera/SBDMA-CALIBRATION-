@@ -26,3 +26,4 @@ arabic-reshaper==3.1.0
 python-bidi==0.6.12
 # test tooling lives in requirements-dev.txt so the runtime bundle stays small enough
 # to deploy as a serverless function
+pillow==13.0.0

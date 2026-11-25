@@ -19,6 +19,7 @@ needs an identity and a fingerprint.
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import uuid
 from datetime import date, datetime, timezone
@@ -30,6 +31,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import get_settings
 from app.models.audit import AuditLog
 from app.services.audit_service import AuditService
+from app.services.branding_service import BrandingService
 from app.services.kpi_service import KpiService
 from app.services.report_service import build_kpi_pdf
 
@@ -87,6 +89,8 @@ async def build_kpi_report(
 
     service = KpiService(session)
     departments = await service.all_departments()
+    # one read for the whole batch: every document in a run carries the same letterhead
+    branding = await BrandingService(session).load()
 
     # Site-wide plus one per department: a department head should not have to
     # subtract two numbers to find their own.
@@ -111,9 +115,10 @@ async def build_kpi_report(
                 "generated_at": datetime.now(timezone.utc).isoformat(),
                 "scope_label": scope,
                 "period_label": period,
+                "branding": branding,
             }
         )
-        blob = build_kpi_pdf(payload)
+        blob = await asyncio.to_thread(build_kpi_pdf, payload)
         digest = hashlib.sha256(blob).hexdigest()
         path = target_dir / f"{period}-{scope}-kpi.pdf"
         path.write_bytes(blob)

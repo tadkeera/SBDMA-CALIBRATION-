@@ -13,81 +13,32 @@ import pytest
 
 from tests.conftest import PASSWORDS
 
-COMPLIANT_INPUTS = {
-    "T01": {
-        "wavelength_dev": 0.4,
-        "d2_energy": 1450,
-        "pulsation": 0.05,
-        "oven_stability": 0.1,
-        "absorbance_dev": 0.5,
-        "noise": 0.01,
-        "drift": 0.1,
-        "gradient_dev": 0.4,
-        "pressure_limiter": "Passed",
-    },
-    # flow accuracy: 5 mL collected in 599.9 / 299.4 / 150.1 s
-    "T02": {
-        "set_flow": [0.5, 1.0, 2.0],
-        "collected_vol": [5.0, 5.0, 5.0],
-        "actual_time": [599.9, 299.4, 150.1],
-    },
-    "T03": {"pulsation": 0.05, "upper_limiter": "Passed", "lower_limiter": "Passed"},
-    # gradient programme reaching 10 / 50 / 90 % within the tolerance band
-    "T04": {
-        "height_0": [1.0, 1.0, 1.0],
-        "height_10": [10.0, 10.0, 10.0],
-        "height_50": [50.0, 50.0, 50.0],
-        "height_90": [90.0, 90.0, 90.0],
-        "height_100": [100.0, 100.0, 100.0],
-    },
-    # 100 µL injection × 6: 0.59957 g of water displaced → 99.929 µL per injection
-    "T05": {"w1": 1.20000, "w2": 0.60043, "water_density": 0.998, "set_vol": 100, "n_injections": 6},
-    # linearity plus five replicate loop injections with a tight RSD
-    "T06": {
-        "volumes": [1, 2, 5, 10, 20],
-        "linearity_areas": [100, 205, 498, 1010, 1995],
-        "loop_areas": [498.2, 499.1, 497.8, 498.9, 498.4],
-    },
-    "T07": {"t_set": 40.0, "t_ref_raw": 40.1, "ref_offset": 0.0, "wait_minutes": 30, "ambient_temp": 23.0},
-    "T08": {
-        "t_set": 10.0,
-        "t_display": 10.2,
-        "t_ref_raw": 10.1,
-        "ref_offset": 0.0,
-        "fluctuation": 0.05,
-        "gas_sensor": "Passed",
-    },
-    # D2 energy, holmium-free wavelength check and the D2 line positions
-    "T09": {
-        "d2_energy": 1450,
-        "lamp_hours": 320,
-        "wavelength_dev": 0.4,
-        "peak_205": 205.3,
-        "valley_245": 245.2,
-        "peak_273": 273.4,
-    },
-    # linear detector response; heights near linear in concentration
-    "T10": {
-        "absorbance_dev": 0.5,
-        "concs": [1, 2, 5, 10, 20],
-        "heights": [0.101, 0.202, 0.505, 1.010, 2.019],
-    },
-    "T11": {"noise": 0.01, "drift": 0.1},
-    "T12": {
-        "rt_values": [2.501, 2.498, 2.504, 2.499, 2.502, 2.503],
-        "areas": [1000.0, 1002.0, 998.0, 1001.0, 999.0, 1000.5],
-        "area_blank": 0.02,
-        "area_sample_250": 1000.0,
-        "area_sample_50": 200.0,
-    },
-    "T13": {
-        "detector_sensor": "Passed",
-        "pump_sensor": "Passed",
-        "hpv_sensor": "Passed",
-        "lpv_sensor": "Passed",
-        "rack_setting": "Passed",
-        "port_teaching": "Passed",
-    },
+# The reference dataset: one compliant reading set for the whole protocol.
+# Every value sits inside the AUTHORITY_LIMIT for its metric, so a full run must
+# report 20/20 PASS. Both engines and the browser E2E suite are fed these exact
+# numbers (e2e/fixtures/compliant_inputs.json is generated from this dict and
+# backend/tests/test_e2e_fixtures.py fails the build if they drift).
+COMPLIANT_INPUTS: dict[str, dict[str, object]] = {
+    "T01": {"wavelength_dev": 0.5, "d2_energy": 1450, "pulsation": 0.05, "oven_stability": 0.1, "absorbance_dev": 0.5, "noise": 0.008, "drift": 0.1, "gradient_dev": 0.4, "pressure_limiter_pass": "PASS"},
+    "T02": {"set_flow": [1.0, 1.5, 2.0], "collected_vol": [10.02, 15.0, 19.9], "actual_time": [600, 600, 600]},
+    "T03": {"pulsation": 0.05, "upper_limiter_pass": "PASS", "lower_limiter_pass": "PASS"},
+    "T04": {"channel_pair": "A/B", "height_0": 5, "height_10": 105, "height_50": 505, "height_90": 905, "height_100": 1005},
+    "T05": {"w1": 10.5, "w2": 10.001, "water_density": 0.998, "set_vol": 50, "n_injections": 10},
+    "T06": {"volumes": [10, 20, 30, 40, 50], "linearity_areas": [1020, 2050, 3070, 4100, 5120], "loop_areas": [2050, 2045, 2052, 2048, 2050]},
+    "T07": {"t_set": 4, "t_ref_raw": 4.8, "ref_offset": -0.5},
+    "T08": {"t_set": [30, 40, 50, 60], "t_display": [30.1, 40.1, 50.1, 60.1], "t_ref_raw": [30.2, 40.2, 50.2, 60.2], "ref_offset": -0.05, "fluctuation": 0.1, "gas_sensor_pass": "PASS"},
+    "T09": {"d2_energy": 1450, "lamp_hours": 320, "wavelength_dev": 0.3, "peak_205": 205.1, "valley_245": 244.9, "peak_273": 273.2},
+    "T10": {"absorbance_dev": 0.4, "concs": [1, 2, 3, 4, 5], "heights": [102, 205, 307, 410, 512]},
+    "T11": {"noise": 0.008, "drift": 0.15},
+    "T12": {"rt_values": [4.512, 4.515, 4.51, 4.513, 4.511, 4.514], "areas": [2050, 2055, 2048, 2052, 2051, 2049], "area_blank": 0.15, "area_sample_250": 2050},
+    "T13": {"leak_detector": "PASS", "leak_pump": "PASS", "leak_hpv": "PASS", "leak_lpv": "PASS"},
+    "T14": {"crm_wavelength": 250.0, "measured_wavelengths": [250.2, 250.1, 250.3, 250.0, 250.2, 250.1]},
+    "T15": {"crm_wavelength": 550.0, "measured_wavelengths": [550.3, 550.1, 550.4, 550.2, 550.0, 550.3]},
+    "T16": {"crm_abs": 0.5, "measured_abs": [0.5002, 0.4998, 0.5005, 0.4999, 0.5001, 0.5003]},
+    "T17": {"crm_abs": 1.5, "measured_abs": [1.5002, 1.4998, 1.5005, 1.4999, 1.5001, 1.5003]},
+    "T18": {"delta_a": 1.0, "a_max": 2.2},
+    "T19": {"abs_269": 0.65, "abs_266": 0.45},
+    "T20": {"peak_height_h": 150, "blank_noise_h": 5, "w_005": 0.52, "d_leading": 0.28, "tr1": 7.2, "tr2": 8.5, "wh1": 0.14, "wh2": 0.15},
 }
 
 
@@ -213,7 +164,7 @@ async def test_full_happy_path_lock_and_immutability(
     assert executed.status_code == 200, executed.text
     outcome = executed.json()["data"]
     assert outcome["overall"] == "PASS", outcome
-    assert len(outcome["results"]) == 13
+    assert len(outcome["results"]) == 20
 
     # review requires an electronic signature
     unsigned = await client.post(
@@ -415,7 +366,9 @@ async def test_post_breakdown_scopes_the_retest_matrix(client, analyst, instrume
         client, analyst, instrument_id, run_type="POST_BREAKDOWN", breakdown_component="D2_LAMP"
     )
     run_id = created.json()["data"]["id"]
-    scoped_inputs = {k: COMPLIANT_INPUTS[k] for k in ("T01", "T09", "T11")}
+    # a D2-lamp replacement mandates the stricter v2 matrix: lamp evidence plus the
+    # USP <857> wavelength and stray-light checks it invalidates
+    scoped_inputs = {k: COMPLIANT_INPUTS[k] for k in ("T01", "T09", "T11", "T14", "T18")}
     response = await client.post(
         f"/api/v1/runs/{run_id}/execute",
         headers=analyst["hash"],
@@ -423,7 +376,8 @@ async def test_post_breakdown_scopes_the_retest_matrix(client, analyst, instrume
     )
     assert response.status_code == 200, response.text
     codes = {r["test_code"] for r in response.json()["data"]["results"]}
-    assert codes == {"T01", "T09", "T11"}
+    # the automatic validation sweep (T01) always runs alongside the mandated matrix
+    assert codes == {"T01", "T09", "T11", "T14", "T18"}
     assert response.json()["data"]["overall"] == "PASS"
 
 
@@ -503,7 +457,7 @@ async def test_locked_results_cannot_be_modified(client, analyst, reviewer, qa, 
                 {"rid": run_id},
             )
         ).scalar_one()
-    assert locked == 13
+    assert locked == 20
 
     async with SessionFactory() as session:
         with pytest.raises(DBAPIError) as excinfo:
@@ -561,14 +515,16 @@ async def test_kpis_reflect_live_rows(client, admin_session):
     assert data["runs"]["pass_rate_percent"] is not None
 
 
-async def test_protocol_endpoint_returns_13_tests_and_108_limits(client, admin_session):
+async def test_protocol_endpoint_returns_20_tests_and_93_limits(client, admin_session):
+    """Protocol v2.0.0 is what the API serves — not the 13-test v1 table."""
     response = await client.get(
-        "/api/v1/protocols/SHIMADZU-LC2050C-UV-CAL", headers=admin_session["hash"]
+        "/api/v1/protocols/HPLC-SHIMADZU-LC2050C-PROTOCOL", headers=admin_session["hash"]
     )
     assert response.status_code == 200
     data = response.json()["data"]
-    assert len(data["tests"]) == 13
-    assert sum(len(t["limits"]) for t in data["tests"]) == 108
+    assert data["version"] == "2.0.0"
+    assert len(data["tests"]) == 20
+    assert sum(len(t["limits"]) for t in data["tests"]) == 93
     assert data["status"] == "APPROVED"
 
 
@@ -585,7 +541,17 @@ async def test_maintenance_ticket_drives_the_retest_matrix(client, admin_session
     )
     assert created.status_code == 201, created.text
     ticket = created.json()["data"]
-    assert set(ticket["required_tests"]) == {"T09", "T10", "T11", "T12"}
+    assert set(ticket["required_tests"]) == {
+        "T09",
+        "T10",
+        "T11",
+        "T12",
+        "T14",
+        "T16",
+        "T17",
+        "T18",
+        "T19",
+    }
 
     resolved = await client.post(
         f"/api/v1/maintenance/tickets/{ticket['id']}/resolve", headers=technician["hash"]
@@ -621,7 +587,7 @@ async def test_run_detail_returns_the_raw_inputs_that_were_signed(
     detail = await client.get(f"/api/v1/runs/{run_id}", headers=admin_session["hash"])
     assert detail.status_code == 200, detail.text
     results = detail.json()["data"]["results"]
-    assert len(results) == 13
+    assert len(results) == 20
 
     by_code = {r["test_code"]: r for r in results}
     for code, captured in COMPLIANT_INPUTS.items():

@@ -3,7 +3,7 @@
 `src/core/protocol.ts` is read as source text and structurally compared against
 `app/domain/protocol/blueprint.py`. Running the TypeScript engine under Node is
 not required: the two artefacts must agree on test codes, field keys, formula
-expressions and every one of the 108 limits.
+expressions and every one of the 93 limits.
 
 If this test fails, the frontend and the backend would score the same readings
 differently — which is the single most dangerous defect this system can ship.
@@ -15,6 +15,7 @@ import json
 import re
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -40,11 +41,11 @@ def ts_source() -> str:
     return _strip_comments(PROTOCOL_TS.read_text(encoding="utf-8"))
 
 
-def test_all_13_test_codes_present(ts_source: str) -> None:
+def test_all_twenty_test_codes_present(ts_source: str) -> None:
     codes = set(re.findall(r"code:\s*'(T\d\d)'", ts_source))
     expected = {t.code for t in TESTS}
     assert codes == expected, f"missing {expected - codes}, extra {codes - expected}"
-    assert len(expected) == 13
+    assert len(expected) == 20
 
 
 def test_field_keys_match(ts_source: str) -> None:
@@ -66,7 +67,7 @@ def test_limit_count_and_sources(ts_source: str) -> None:
         r"\s*([^,]+),\s*([^,]+),\s*'([^']*)'\s*,\s*([AC])",
         ts_source,
     )
-    assert len(calls) == len(LIMITS) == 108, f"TS limits {len(calls)} vs Python {len(LIMITS)}"
+    assert len(calls) == len(LIMITS) == 93, f"TS limits {len(calls)} vs Python {len(LIMITS)}"
 
     ts_set = {(t, m, s) for t, m, s, *_ in calls}
     py_set = {(l.test_code, l.metric_key, l.source_type) for l in LIMITS}
@@ -102,6 +103,27 @@ def test_breakdown_matrix_matches(ts_source: str) -> None:
         assert f"key: '{row['key']}'" in ts_source or f"'{row['key']}'" in ts_source, row["key"]
         for code in row["tests"]:
             assert code in ts_source
+
+
+def test_protocol_ts_is_generated_from_the_blueprint() -> None:
+    """`src/core/protocol.ts` must be the generator's output, byte for byte.
+
+    The table is no longer hand-maintained: `scripts/export_protocol_ts.py` derives it
+    from the same blueprint the seeder writes to PostgreSQL. Regenerating and
+    comparing turns "we forgot to update the twin" from a production incident into a
+    failing build.
+    """
+    import subprocess
+
+    generator = FRONTEND / "scripts" / "export_protocol_ts.py"
+    assert generator.is_file(), "the protocol generator is missing"
+    result = subprocess.run(
+        [sys.executable, str(generator), "--check"],
+        cwd=FRONTEND,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 TS_HARNESS = FRONTEND / "tests" / "parity" / "run_ts_engine.ts"

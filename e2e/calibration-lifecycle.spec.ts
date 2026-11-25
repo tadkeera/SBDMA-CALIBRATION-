@@ -1,7 +1,7 @@
 /**
  * The whole governed workflow, in the browser, against the real server:
  *
- *   analyst fills the 13 tests → engine verdict PASS → run is stored
+ *   analyst fills the 20 tests → engine verdict PASS → run is stored
  *   → reviewer signs the technical review → QA approves and locks it
  *   → certificate PDF and Excel export download as real files.
  *
@@ -67,7 +67,7 @@ async function waitForNewRun(
   throw new Error('the submitted run never appeared in /api/v1/runs');
 }
 
-test('the analyst completes the 13 tests and submits a PASS run', async ({ page }) => {
+test('the analyst completes the 20 tests and submits a PASS run', async ({ page }) => {
   await signInAs(page, 'analyst');
   await open(page, '/lab');
 
@@ -87,10 +87,10 @@ test('the analyst completes the 13 tests and submits a PASS run', async ({ page 
   await expect(save).toBeVisible({ timeout: 30_000 });
 
   // The preview must agree with the reference dataset before the run is stored: all
-  // thirteen protocol tests pass, nothing left under review. (Labels are bilingual,
+  // twenty protocol tests pass, nothing left under review. (Labels are bilingual,
   // so the count is matched in either language; the stored run is checked below.)
   const dialog = page.locator('[role="dialog"]').last();
-  await expect(dialog).toContainText(/(?:مطابق|Pass)\s*13/);
+  await expect(dialog).toContainText(/(?:مطابق|Pass)\s*20/);
   await expect(dialog).toContainText(/(?:قيد المراجعة|Review)\s*0/);
 
   // Saving is two server calls by design: create the governed record, then execute
@@ -114,14 +114,14 @@ test('the analyst completes the 13 tests and submits a PASS run', async ({ page 
   runCode = run.execution_code;
   expect(run.overall_status).toBe('PASS');
 
-  // The stored run, not just the preview: thirteen results, every one of them PASS.
+  // The stored run, not just the preview: twenty results, every one of them PASS.
   const detail = await page.request.get(`/api/v1/runs/${runId}`);
   const envelope = (await detail.json()) as {
     data: { results: Array<{ test_code: string; status: string }> };
   };
-  expect(envelope.data.results).toHaveLength(13);
+  expect(envelope.data.results).toHaveLength(20);
   expect(envelope.data.results.map((result) => result.status)).toEqual(
-    Array.from({ length: 13 }, () => 'PASS'),
+    Array.from({ length: 20 }, () => 'PASS'),
   );
 });
 

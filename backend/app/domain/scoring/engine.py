@@ -238,13 +238,24 @@ def _coerce_inputs(test: TestSpec, raw: dict[str, Any]) -> tuple[dict[str, Any],
     return scope, complete
 
 
+#: Select values that count as a failure. The protocol uses ``PASS``/``FAIL``; the
+#: earlier revision used ``Passed``/``Failed``. Both are accepted, in any case, so a
+#: reading stored by either version is read the same way instead of silently passing
+#: a failed sensor.
+_FAIL_VALUES = frozenset({"fail", "failed", "reject", "rejected"})
+
+
+def _is_failed(value: object) -> bool:
+    return isinstance(value, str) and value.strip().lower() in _FAIL_VALUES
+
+
 def _select_gate(test: TestSpec, raw: dict[str, Any]) -> list[str]:
     """Select-type fields that gate the verdict (e.g. leak sensors, limiters)."""
-    failures: list[str] = []
-    for fspec in test.fields:
-        if fspec.type == "select" and raw.get(fspec.key) == "Failed":
-            failures.append(fspec.label_ar)
-    return failures
+    return [
+        fspec.label_ar
+        for fspec in test.fields
+        if fspec.type == "select" and _is_failed(raw.get(fspec.key))
+    ]
 
 
 def execute_test(

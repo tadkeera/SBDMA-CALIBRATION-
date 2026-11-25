@@ -11,6 +11,7 @@
  *    the cookie on cross-origin setups and would bypass error handling).
  */
 
+import type { Branding } from '@/core/branding';
 import type {
   Instrument,
   LimitSource,
@@ -444,6 +445,21 @@ export const api = {
 
   // system
   health: () => request<ServerHealth>('/health'),
+
+  // report letterhead — the two reads are public: the sign-in screen needs them
+  branding: () => request<Branding>('/branding'),
+  updateBrandingHeader: (header_ar: string[], header_en: string[]) =>
+    request<Branding>('/branding', {
+      method: 'PUT',
+      body: JSON.stringify({ header_ar, header_en }),
+    }),
+  resetBrandingHeader: () => request<Branding>('/branding/reset', { method: 'POST' }),
+  uploadBrandingLogo: (file: File) => {
+    const body = new FormData();
+    body.append('file', file);
+    return request<Branding>('/branding/logo', { method: 'POST', body });
+  },
+  deleteBrandingLogo: () => request<Branding>('/branding/logo', { method: 'DELETE' }),
   kpis: () => request<ServerKpis>('/kpis'),
 
   // catalogue

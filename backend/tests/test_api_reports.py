@@ -14,6 +14,9 @@ from openpyxl import load_workbook
 from tests.conftest import PASSWORDS
 from tests.test_api_runs import COMPLIANT_INPUTS, _create, _login
 
+from app.services.report_service import XLSX_FIRST_DATA_ROW  # noqa: E402
+
+
 
 def _pdf_text(raw: bytes) -> str:
     """Decode every content stream (ReportLab writes ASCII85 + Flate) and return the text.
@@ -151,21 +154,21 @@ async def test_run_xlsx_has_all_sheets_and_stored_values(
     wb = load_workbook(io.BytesIO(response.content))
     assert wb.sheetnames == ["Summary", "Results", "Limits", "Audit", "Raw inputs"]
 
-    summary = {row[0]: row[1] for row in wb["Summary"].iter_rows(min_row=5, values_only=True)}
+    summary = {row[0]: row[1] for row in wb["Summary"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True)}
     assert summary["Certificate fingerprint (SHA-256)"] == cert_hash
     assert summary["Overall status"] == "PASS"
     assert summary["Limit source policy"] == "AUTHORITY_LIMIT"
 
-    results = list(wb["Results"].iter_rows(min_row=5, values_only=True))
+    results = list(wb["Results"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True))
     assert len(results) >= 30
     assert {r[6] for r in results} == {"PASS"}
     assert {r[0] for r in results} >= {"T01", "T11", "T12"}
 
-    limits = list(wb["Limits"].iter_rows(min_row=5, values_only=True))
-    assert len(limits) == 108
+    limits = list(wb["Limits"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True))
+    assert len(limits) == 93
     assert {l[7] for l in limits} >= {"APPROVED", "CONFLICT_REQUIRES_QA"}
 
-    raw = list(wb["Raw inputs"].iter_rows(min_row=5, values_only=True))
+    raw = list(wb["Raw inputs"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True))
     assert any(r[1] == "actual_time" for r in raw), "raw readings must be exported verbatim"
 
 
@@ -174,7 +177,7 @@ async def test_runs_register_xlsx(client, qa):
     assert response.status_code == 200
     wb = load_workbook(io.BytesIO(response.content))
     assert wb.sheetnames == ["Runs"]
-    rows = list(wb["Runs"].iter_rows(min_row=5, values_only=True))
+    rows = list(wb["Runs"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True))
     assert rows
     assert all(len(r) == 9 for r in rows)
 
@@ -187,7 +190,7 @@ async def test_audit_xlsx_requires_audit_permission(client, analyst):
     response = await client.get("/api/v1/reports/audit.xlsx", headers=admin["hash"])
     assert response.status_code == 200
     wb = load_workbook(io.BytesIO(response.content))
-    rows = list(wb["Audit trail"].iter_rows(min_row=5, values_only=True))
+    rows = list(wb["Audit trail"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True))
     assert len(rows) > 5
     assert all(len(r[8]) == 64 for r in rows), "every audit row carries a full SHA-256 hash"
 

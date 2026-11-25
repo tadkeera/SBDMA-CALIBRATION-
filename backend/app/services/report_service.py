@@ -30,7 +30,9 @@ from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
 from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.pdfmetrics import stringWidth
 from reportlab.pdfbase.ttfonts import TTFont
+from app.services.branding_service import DEFAULT_HEADER_AR, DEFAULT_HEADER_EN
 from reportlab.platypus import (
     BaseDocTemplate,
     Frame,
@@ -186,7 +188,121 @@ def _styles() -> dict[str, ParagraphStyle]:
             "note", parent=base["Normal"], fontName=font, fontSize=7.2, leading=9.4,
             textColor=colors.HexColor("#5b6773"),
         ),
+        # ── official letterhead ──────────────────────────────────────────
+        # Both blocks are set at the same size and leading so the letterhead reads
+        # as one balanced band, not as two lists that happen to sit side by side.
+        "lh_ar": ParagraphStyle(
+            "lh_ar", parent=base["Normal"], fontName=bold, fontSize=8.6, leading=11.4,
+            alignment=TA_RIGHT, textColor=colors.HexColor("#16202b"),
+        ),
+        "lh_en": ParagraphStyle(
+            "lh_en", parent=base["Normal"], fontName=bold, fontSize=8.6, leading=11.4,
+            alignment=0, textColor=colors.HexColor("#16202b"),  # TA_LEFT
+        ),
     }
+
+
+#: marker for "already shaped" — see _letterhead
+_AR_MARK = ""
+
+
+def _headline_lines(branding: dict[str, Any], key: str, default: tuple[str, ...]) -> list[str]:
+    lines = branding.get(key) or default
+    return [str(line) for line in lines if str(line).strip()]
+
+
+def _letterhead(
+    st: dict[str, ParagraphStyle],
+    branding: dict[str, Any] | None,
+    *,
+    width: float | None = None,
+) -> list[Any]:
+    """The official letterhead: Arabic right, logo centred, English left, ruled off.
+
+    Nothing here is invented: the four lines come from the stored settings (or the
+    agency's defaults) and the logo is the uploaded official mark. When no logo has
+    been uploaded the centre cell simply stays empty rather than showing a stand-in
+    graphic that a reader could mistake for an official symbol.
+    """
+    branding = branding or {}
+    arabic = [_AR_MARK + line for line in _headline_lines(branding, "header_ar", DEFAULT_HEADER_AR)]
+    english = _headline_lines(branding, "header_en", DEFAULT_HEADER_EN)
+
+    usable = width or (A4[0] - 28 * mm)
+    centre = usable * 0.20
+    side = (usable - centre) / 2
+    avail = side - 3 * mm
+
+    # One type size for both blocks, chosen so that the longest line of either
+    # language still fits on one line. Two blocks of different sizes read as two
+    # unrelated captions; a letterhead has to look like a single band.
+    size = 8.4
+    longest_en = max(stringWidth(line, pdfmetrics.getFont(FONT_BOLD).fontName, size) for line in english)
+    shaped_ar = [ar(line) for line in arabic]
+    longest_ar = max(stringWidth(line, pdfmetrics.getFont(FONT_BOLD).fontName, size) for line in shaped_ar)
+    longest = max(longest_en, longest_ar)
+    if longest > avail:
+        size = max(6.6, size * avail / longest)
+    leading = size * 1.34
+
+    ar_style = ParagraphStyle(
+        "lh_ar_run", parent=st["lh_ar"], fontSize=size, leading=leading
+    )
+    en_style = ParagraphStyle(
+        "lh_en_run", parent=st["lh_en"], fontSize=size, leading=leading
+    )
+
+    centre_cell: Any = Paragraph("", en_style)
+    body = branding.get("logo_bytes")
+    if body:
+        try:
+            logo = Image(io.BytesIO(body))
+            max_w, max_h = centre - 6 * mm, 16 * mm
+            ratio = min(max_w / logo.imageWidth, max_h / logo.imageHeight)
+            logo.drawWidth = logo.imageWidth * ratio
+            logo.drawHeight = logo.imageHeight * ratio
+            logo.hAlign = "CENTER"
+            centre_cell = logo
+        except Exception:  # noqa: BLE001 - a broken image must not lose the report
+            centre_cell = Paragraph("", en_style)
+
+    table = Table(
+        [
+            [
+                [Paragraph(line, ar_style) for line in shaped_ar],
+                centre_cell,
+                [Paragraph(line, en_style) for line in english],
+            ]
+        ],
+        colWidths=[side, centre, side],
+    )
+    table.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("ALIGN", (0, 0), (0, 0), "RIGHT"),
+                ("ALIGN", (1, 0), (1, 0), "CENTER"),
+                ("ALIGN", (2, 0), (2, 0), "LEFT"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    # a heavy brand rule with a hairline beneath: a formal divider, not a box
+    rule = Table([[""]], colWidths=[usable], rowHeights=[2.2 * mm])
+    rule.setStyle(
+        TableStyle(
+            [
+                ("LINEABOVE", (0, 0), (-1, 0), 1.1, BRAND),
+                ("LINEBELOW", (0, 0), (-1, 0), 0.4, colors.HexColor("#b9c4cc")),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    return [table, Spacer(1, 1.6 * mm), rule]
 
 
 def _header_table(
@@ -252,6 +368,8 @@ def build_certificate_pdf(payload: dict[str, Any]) -> bytes:
     instrument = payload["instrument"]
     story: list[Any] = []
 
+    story.extend(_letterhead(st, payload.get("branding")))
+    story.append(Spacer(1, 2.5 * mm))
     story.append(_header_table(st, payload["subtitle"]))
     story.append(Spacer(1, 4 * mm))
 
@@ -602,6 +720,13 @@ def build_certificate_pdf(payload: dict[str, Any]) -> bytes:
 # XLSX export
 # ════════════════════════════════════════════════════════════════════════════
 
+#: Rows 1-4 carry the official letterhead, 5 is its breathing space, then the sheet
+#: title/subtitle and the table header. Data therefore starts here — the tests and
+#: the summary scan read from this constant instead of a magic 5.
+XLSX_LETTERHEAD_ROWS = 4
+XLSX_SPACER_ROW = 1
+XLSX_FIRST_DATA_ROW = XLSX_LETTERHEAD_ROWS + XLSX_SPACER_ROW + 4
+
 HEADER_FILL = PatternFill("solid", fgColor="21695E")
 HEADER_FONT = Font(name="Calibri", bold=True, color="FFFFFF", size=10)
 TITLE_FONT = Font(name="Calibri", bold=True, size=13, color="21695E")
@@ -609,13 +734,67 @@ THIN = Side(style="thin", color="D5DDE2")
 BORDER = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
 
 
+def _write_letterhead(ws, branding: dict[str, Any] | None, columns: int) -> None:  # noqa: ANN001
+    """The official letterhead, right-aligned Arabic and left-aligned English.
+
+    Spreadsheets have no page header that survives every viewer, so the letterhead
+    is real cells: it prints, it sorts with the sheet and it exports onward intact.
+    The Arabic block occupies the right half with its reading order set to RTL, the
+    English block the left half, and the logo is floated in the centre.
+    """
+    branding = branding or {}
+    arabic = _headline_lines(branding, "header_ar", DEFAULT_HEADER_AR)
+    english = _headline_lines(branding, "header_en", DEFAULT_HEADER_EN)
+    half = max(2, columns // 2)
+    ar_start, ar_end = half + 1, columns
+    en_start, en_end = 1, half
+
+    for index in range(XLSX_LETTERHEAD_ROWS):
+        row = index + 1
+        ws.row_dimensions[row].height = 16
+        if index < len(english):
+            ws.cell(row=row, column=en_start, value=english[index])
+        if index < len(arabic):
+            ws.cell(row=row, column=ar_start, value=arabic[index])
+        if ar_end > ar_start:
+            ws.merge_cells(start_row=row, start_column=ar_start, end_row=row, end_column=ar_end)
+        if en_end > en_start:
+            ws.merge_cells(start_row=row, start_column=en_start, end_row=row, end_column=en_end)
+        en_cell = ws.cell(row=row, column=en_start)
+        en_cell.font = Font(bold=True, size=10, color="16202B")
+        en_cell.alignment = Alignment(horizontal="left", vertical="center")
+        ar_cell = ws.cell(row=row, column=ar_start)
+        ar_cell.font = Font(bold=True, size=10, color="16202B")
+        ar_cell.alignment = Alignment(horizontal="right", vertical="center", readingOrder=2)
+
+    rule_row = XLSX_LETTERHEAD_ROWS
+    rule = Side(style="medium", color="21695E")
+    for column in range(1, columns + 1):
+        ws.cell(row=rule_row, column=column).border = Border(bottom=rule)
+
+    body = branding.get("logo_bytes")
+    if body:
+        try:
+            from openpyxl.drawing.image import Image as XLImage
+
+            image = XLImage(io.BytesIO(body))
+            ratio = min(60 / image.width, 56 / image.height, 1.0)
+            image.width = max(1, int(image.width * ratio))
+            image.height = max(1, int(image.height * ratio))
+            anchor = get_column_letter(max(1, half)) + "1"
+            ws.add_image(image, anchor)
+        except Exception:  # noqa: BLE001 - the report outranks its logo
+            pass
+
+
 def _write_sheet(ws, title: str, subtitle: str, headers: list[str], rows: list[list[Any]],  # noqa: ANN001
-                 widths: list[int]) -> None:
-    ws["A1"] = title
-    ws["A1"].font = TITLE_FONT
-    ws["A2"] = subtitle
-    ws["A2"].font = Font(size=9, italic=True, color="5B6773")
-    header_row = 4
+                 widths: list[int], branding: dict[str, Any] | None = None) -> None:
+    title_row = XLSX_LETTERHEAD_ROWS + XLSX_SPACER_ROW + 1
+    ws.cell(row=title_row, column=1, value=title).font = TITLE_FONT
+    ws.cell(row=title_row + 1, column=1, value=subtitle).font = Font(
+        size=9, italic=True, color="5B6773"
+    )
+    header_row = XLSX_FIRST_DATA_ROW - 1
     for col, header in enumerate(headers, start=1):
         cell = ws.cell(row=header_row, column=col, value=header)
         cell.fill = HEADER_FILL
@@ -633,6 +812,7 @@ def _write_sheet(ws, title: str, subtitle: str, headers: list[str], rows: list[l
                 cell.font = Font(bold=True, color=f"{int(colour.red * 255):02X}{int(colour.green * 255):02X}{int(colour.blue * 255):02X}")
     ws.freeze_panes = ws.cell(row=header_row + 1, column=1)
     ws.sheet_view.rightToLeft = False
+    _write_letterhead(ws, branding, len(headers))
 
 
 def build_run_xlsx(payload: dict[str, Any]) -> bytes:
@@ -671,7 +851,7 @@ def build_run_xlsx(payload: dict[str, Any]) -> bytes:
             ["Started at", run["started_at"]],
             ["Completed at", run["completed_at"]],
         ],
-        [34, 78],
+        [34, 78], branding=payload.get("branding"),
     )
 
     ws2 = wb.create_sheet("Results")
@@ -696,7 +876,7 @@ def build_run_xlsx(payload: dict[str, Any]) -> bytes:
         "Values are stored as exact decimals on the server and exported verbatim.",
         ["Test", "Metric", "Value", "Unit", "Applied limit", "Source", "Status"],
         rows,
-        [9, 30, 20, 12, 30, 24, 14],
+        [9, 30, 20, 12, 30, 24, 14], branding=payload.get("branding"),
     )
 
     ws3 = wb.create_sheet("Limits")
@@ -706,7 +886,7 @@ def build_run_xlsx(payload: dict[str, Any]) -> bytes:
         "Conflicted or unapproved limits force the run to UNDER_REVIEW.",
         ["Test", "Metric", "Source", "Operator", "Min", "Max", "Unit", "Approval status"],
         payload["limits"],
-        [9, 30, 24, 10, 12, 12, 12, 24],
+        [9, 30, 24, 10, 12, 12, 12, 24], branding=payload.get("branding"),
     )
 
     ws4 = wb.create_sheet("Audit")
@@ -716,7 +896,7 @@ def build_run_xlsx(payload: dict[str, Any]) -> bytes:
         "Append-only. Each row's hash covers the previous hash and the payload.",
         ["Timestamp (UTC)", "Actor", "Role", "Action", "Reason", "Hash (prefix)"],
         payload["audit"],
-        [24, 18, 16, 32, 46, 20],
+        [24, 18, 16, 32, 46, 20], branding=payload.get("branding"),
     )
 
     ws5 = wb.create_sheet("Raw inputs")
@@ -726,7 +906,7 @@ def build_run_xlsx(payload: dict[str, Any]) -> bytes:
         "ALCOA+: raw data exported exactly as captured, before any calculation.",
         ["Test", "Field", "Value"],
         payload["raw_rows"],
-        [9, 30, 60],
+        [9, 30, 60], branding=payload.get("branding"),
     )
 
     buf = io.BytesIO()
@@ -780,6 +960,8 @@ def build_kpi_pdf(payload: dict[str, Any]) -> bytes:
     doc.addPageTemplates([PageTemplate(id="kpi", frames=frames, onPage=on_page)])
 
     story: list[Any] = []
+    story.extend(_letterhead(st, payload.get("branding")))
+    story.append(Spacer(1, 2.5 * mm))
     story.append(
         _header_table(
             st,

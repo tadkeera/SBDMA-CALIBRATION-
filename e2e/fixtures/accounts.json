@@ -25,5 +25,10 @@
     "username": "viewer",
     "env": "SBDMA_VIEWER_PASSWORD",
     "password": "E2e-Viewer-2026!Pass"
+  },
+  "admin": {
+    "username": "admin",
+    "env": "SBDMA_ADMIN_PASSWORD",
+    "password": "E2e-Admin-2026!Pass"
   }
 }

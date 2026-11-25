@@ -23,6 +23,13 @@ export interface EngineOptions {
   policySource: LimitSource;
 }
 
+/** Select values that count as a failure — `FAIL`/`Failed`, case-insensitive. */
+const FAIL_VALUES = new Set(['fail', 'failed', 'reject', 'rejected']);
+
+export function isFailedValue(value: unknown): boolean {
+  return typeof value === 'string' && FAIL_VALUES.has(value.trim().toLowerCase());
+}
+
 export function limitFor(
   testCode: string,
   metricKey: string,
@@ -134,7 +141,7 @@ export interface RunComputation {
   perTest: Record<string, RunTestResult>;
 }
 
-/** Execute all 13 tests for a set of raw inputs. */
+/** Execute every test in the protocol for a set of raw inputs. */
 export function runCalibration(
   inputs: Record<string, Record<string, unknown>>,
   opts: EngineOptions,
@@ -173,7 +180,10 @@ export function runCalibration(
       } else if (f.type === 'boolean') {
         scope[f.key] = v ? 1 : 0;
       } else if (f.type === 'select' || f.type === 'text') {
-        scope[f.key] = v === 'Passed' ? 1 : v === 'Not Required' ? 1 : v === 'Failed' ? 0 : 0;
+        // The v2 protocol writes PASS/FAIL; the earlier revision wrote Passed/Failed.
+        // Both spellings must map to the same numeric value or the two engines would
+        // disagree on a stored reading.
+        scope[f.key] = isFailedValue(v) ? 0 : 1;
         outputs[f.key] = String(v);
       } else {
         scope[f.key] = Number(v);
@@ -201,7 +211,7 @@ export function runCalibration(
     // select-field gates that are not plain numeric metrics
     const selectFailures: string[] = [];
     for (const f of test.fields) {
-      if (f.type === 'select' && raw[f.key] === 'Failed') selectFailures.push(f.labelAr);
+      if (f.type === 'select' && isFailedValue(raw[f.key])) selectFailures.push(f.labelAr);
     }
 
     const status = selectFailures.length

@@ -200,3 +200,54 @@ body {
     transform: none;
   }
 }
+
+/* ── printing on agency stationery ───────────────────────────────────────────
+   Every page prints the official letterhead, the report body underneath it and
+   the working chrome (navigation, toolbars, toasts) removed. */
+.print-only {
+  display: none;
+}
+
+@media print {
+  :root,
+  html.dark {
+    --surface: #ffffff;
+    --surface-2: #ffffff;
+    --surface-3: #ffffff;
+    --border: #b9c4cc;
+    --text: #111111;
+    --text-muted: #444444;
+  }
+
+  html,
+  body {
+    background: #ffffff !important;
+    font-size: 11px;
+  }
+
+  .print-only {
+    display: block !important;
+  }
+
+  .no-print,
+  nav,
+  aside,
+  button,
+  [role='dialog'] {
+    display: none !important;
+  }
+
+  .letterhead {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+
+  main,
+  .card {
+    box-shadow: none !important;
+  }
+
+  @page {
+    margin: 12mm 12mm 14mm;
+  }
+}

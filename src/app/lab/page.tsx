@@ -849,7 +849,10 @@ export default function LabPage() {
       {!instrument && (
         <EmptyState
           title={t('ابدأ باختيار الجهاز', 'Start by selecting an instrument')}
-          detail={t('اختر الجهاز المستهدف ثم أكمل قراءات الاختبارات الـ 13 ثم اضغط Run Calibration.', 'Pick the target instrument, complete the 13 tests, then press Run Calibration.')}
+          detail={t(
+            `اختر الجهاز المستهدف ثم أكمل قراءات الاختبارات الـ ${TESTS.length} ثم اضغط Run Calibration.`,
+            `Pick the target instrument, complete the ${TESTS.length} tests, then press Run Calibration.`,
+          )}
         />
       )}
     </div>

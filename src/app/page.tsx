@@ -484,7 +484,7 @@ export default function DashboardPage() {
         >
           <ul className="divide-y" style={{ borderColor: 'var(--border)' }}>
             {[
-              { icon: CheckCircle2, ar: '13 اختباراً معتمداً لكل دورة معايرة نصف سنوية', en: '13 mandated tests per semi-annual cycle' },
+              { icon: CheckCircle2, ar: `${TESTS.length} اختباراً معتمداً لكل دورة معايرة نصف سنوية`, en: `${TESTS.length} mandated tests per semi-annual cycle` },
               { icon: CalendarClock, ar: 'دورية المعايرة: 180 يوماً أو بعد أي صيانة كبرى', en: 'Frequency: 180 days or after major service' },
               { icon: AlertTriangle, ar: 'وحدة الضجيج تُرفض تلقائياً عند إدخال AU/h (GAP-02)', en: 'Noise in AU/h rejected automatically (GAP-02)' },
               { icon: FlaskConical, ar: 'حساس حرارة المبرد يُثبَّت في الموقع 27 — لا فرن العمود (GAP-08)', en: 'Cooler sensor fixed at position 27 — not the oven (GAP-08)' },

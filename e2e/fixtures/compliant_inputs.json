@@ -4,162 +4,215 @@
     "d2_energy": 1450,
     "drift": 0.1,
     "gradient_dev": 0.4,
-    "noise": 0.01,
+    "noise": 0.008,
     "oven_stability": 0.1,
-    "pressure_limiter": "Passed",
+    "pressure_limiter_pass": "PASS",
     "pulsation": 0.05,
-    "wavelength_dev": 0.4
+    "wavelength_dev": 0.5
   },
   "T02": {
     "actual_time": [
-      599.9,
-      299.4,
-      150.1
+      600,
+      600,
+      600
     ],
     "collected_vol": [
-      5.0,
-      5.0,
-      5.0
+      10.02,
+      15.0,
+      19.9
     ],
     "set_flow": [
-      0.5,
       1.0,
+      1.5,
       2.0
     ]
   },
   "T03": {
-    "lower_limiter": "Passed",
+    "lower_limiter_pass": "PASS",
     "pulsation": 0.05,
-    "upper_limiter": "Passed"
+    "upper_limiter_pass": "PASS"
   },
   "T04": {
-    "height_0": [
-      1.0,
-      1.0,
-      1.0
-    ],
-    "height_10": [
-      10.0,
-      10.0,
-      10.0
-    ],
-    "height_100": [
-      100.0,
-      100.0,
-      100.0
-    ],
-    "height_50": [
-      50.0,
-      50.0,
-      50.0
-    ],
-    "height_90": [
-      90.0,
-      90.0,
-      90.0
-    ]
+    "channel_pair": "A/B",
+    "height_0": 5,
+    "height_10": 105,
+    "height_100": 1005,
+    "height_50": 505,
+    "height_90": 905
   },
   "T05": {
-    "n_injections": 6,
-    "set_vol": 100,
-    "w1": 1.2,
-    "w2": 0.60043,
+    "n_injections": 10,
+    "set_vol": 50,
+    "w1": 10.5,
+    "w2": 10.001,
     "water_density": 0.998
   },
   "T06": {
     "linearity_areas": [
-      100,
-      205,
-      498,
-      1010,
-      1995
+      1020,
+      2050,
+      3070,
+      4100,
+      5120
     ],
     "loop_areas": [
-      498.2,
-      499.1,
-      497.8,
-      498.9,
-      498.4
+      2050,
+      2045,
+      2052,
+      2048,
+      2050
     ],
     "volumes": [
-      1,
-      2,
-      5,
       10,
-      20
+      20,
+      30,
+      40,
+      50
     ]
   },
   "T07": {
-    "ambient_temp": 23.0,
-    "ref_offset": 0.0,
-    "t_ref_raw": 40.1,
-    "t_set": 40.0,
-    "wait_minutes": 30
+    "ref_offset": -0.5,
+    "t_ref_raw": 4.8,
+    "t_set": 4
   },
   "T08": {
-    "fluctuation": 0.05,
-    "gas_sensor": "Passed",
-    "ref_offset": 0.0,
-    "t_display": 10.2,
-    "t_ref_raw": 10.1,
-    "t_set": 10.0
+    "fluctuation": 0.1,
+    "gas_sensor_pass": "PASS",
+    "ref_offset": -0.05,
+    "t_display": [
+      30.1,
+      40.1,
+      50.1,
+      60.1
+    ],
+    "t_ref_raw": [
+      30.2,
+      40.2,
+      50.2,
+      60.2
+    ],
+    "t_set": [
+      30,
+      40,
+      50,
+      60
+    ]
   },
   "T09": {
     "d2_energy": 1450,
     "lamp_hours": 320,
-    "peak_205": 205.3,
-    "peak_273": 273.4,
-    "valley_245": 245.2,
-    "wavelength_dev": 0.4
+    "peak_205": 205.1,
+    "peak_273": 273.2,
+    "valley_245": 244.9,
+    "wavelength_dev": 0.3
   },
   "T10": {
-    "absorbance_dev": 0.5,
+    "absorbance_dev": 0.4,
     "concs": [
       1,
       2,
-      5,
-      10,
-      20
+      3,
+      4,
+      5
     ],
     "heights": [
-      0.101,
-      0.202,
-      0.505,
-      1.01,
-      2.019
+      102,
+      205,
+      307,
+      410,
+      512
     ]
   },
   "T11": {
-    "drift": 0.1,
-    "noise": 0.01
+    "drift": 0.15,
+    "noise": 0.008
   },
   "T12": {
-    "area_blank": 0.02,
-    "area_sample_250": 1000.0,
-    "area_sample_50": 200.0,
+    "area_blank": 0.15,
+    "area_sample_250": 2050,
     "areas": [
-      1000.0,
-      1002.0,
-      998.0,
-      1001.0,
-      999.0,
-      1000.5
+      2050,
+      2055,
+      2048,
+      2052,
+      2051,
+      2049
     ],
     "rt_values": [
-      2.501,
-      2.498,
-      2.504,
-      2.499,
-      2.502,
-      2.503
+      4.512,
+      4.515,
+      4.51,
+      4.513,
+      4.511,
+      4.514
     ]
   },
   "T13": {
-    "detector_sensor": "Passed",
-    "hpv_sensor": "Passed",
-    "lpv_sensor": "Passed",
-    "port_teaching": "Passed",
-    "pump_sensor": "Passed",
-    "rack_setting": "Passed"
+    "leak_detector": "PASS",
+    "leak_hpv": "PASS",
+    "leak_lpv": "PASS",
+    "leak_pump": "PASS"
+  },
+  "T14": {
+    "crm_wavelength": 250.0,
+    "measured_wavelengths": [
+      250.2,
+      250.1,
+      250.3,
+      250.0,
+      250.2,
+      250.1
+    ]
+  },
+  "T15": {
+    "crm_wavelength": 550.0,
+    "measured_wavelengths": [
+      550.3,
+      550.1,
+      550.4,
+      550.2,
+      550.0,
+      550.3
+    ]
+  },
+  "T16": {
+    "crm_abs": 0.5,
+    "measured_abs": [
+      0.5002,
+      0.4998,
+      0.5005,
+      0.4999,
+      0.5001,
+      0.5003
+    ]
+  },
+  "T17": {
+    "crm_abs": 1.5,
+    "measured_abs": [
+      1.5002,
+      1.4998,
+      1.5005,
+      1.4999,
+      1.5001,
+      1.5003
+    ]
+  },
+  "T18": {
+    "a_max": 2.2,
+    "delta_a": 1.0
+  },
+  "T19": {
+    "abs_266": 0.45,
+    "abs_269": 0.65
+  },
+  "T20": {
+    "blank_noise_h": 5,
+    "d_leading": 0.28,
+    "peak_height_h": 150,
+    "tr1": 7.2,
+    "tr2": 8.5,
+    "w_005": 0.52,
+    "wh1": 0.14,
+    "wh2": 0.15
   }
 }

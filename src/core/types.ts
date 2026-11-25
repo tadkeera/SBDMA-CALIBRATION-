@@ -75,7 +75,16 @@ export interface TestSpec {
   sequence: number;
   nameAr: string;
   nameEn: string;
-  module: 'AUTO' | 'PUMP' | 'GPV' | 'INJECTOR' | 'TEMPERATURE' | 'DETECTOR' | 'SYSTEM';
+  module:
+    | 'AUTO'
+    | 'PUMP'
+    | 'GPV'
+    | 'INJECTOR'
+    | 'AUTOSAMPLER'
+    | 'TEMPERATURE'
+    | 'OVEN'
+    | 'DETECTOR'
+    | 'SYSTEM';
   standard: string;
   procedureAr: string[];
   fields: FieldSpec[];

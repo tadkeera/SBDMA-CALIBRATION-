@@ -4,6 +4,7 @@ from fastapi import APIRouter
 
 from app.api.v1 import (
     auth,
+    branding,
     catalogue,
     deviations,
     health,
@@ -17,6 +18,8 @@ from app.api.v1 import (
 api_router = APIRouter()
 api_router.include_router(health.router)
 api_router.include_router(auth.router)
+# the letterhead is public by design: the sign-in screen shows it too
+api_router.include_router(branding.router)
 api_router.include_router(runs.router)
 api_router.include_router(catalogue.router)
 api_router.include_router(reports.router)

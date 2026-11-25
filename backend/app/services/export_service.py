@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
@@ -18,6 +19,7 @@ from app.models.protocol import AcceptanceLimit, CalibrationProtocol, TestDefini
 from app.models.rbac import LabDepartment, User
 from app.models.runs import CalibrationRun, CalibrationTestResult
 from app.services.audit_service import AuditService
+from app.services.branding_service import BrandingService
 from app.services.report_service import (
     build_certificate_pdf,
     build_run_xlsx,
@@ -251,7 +253,13 @@ class ExportService:
 
         payload = self._common_payload(data, "CERT")
         payload["limit_total"] = len(await self._limits_for_protocol(run.protocol_id))
-        pdf = build_certificate_pdf(payload)
+        # the official letterhead is read at render time, so an approved logo or an
+        # edited header is on the very next certificate without a deployment
+        payload["branding"] = await BrandingService(self.session).load()
+        # ReportLab lays out thousands of glyphs and shapes Arabic text; that is CPU
+        # work, and on the event loop it froze the API for over a second per
+        # certificate (see docs/load-test.md).
+        pdf = await asyncio.to_thread(build_certificate_pdf, payload)
 
         await AuditService(self.session).record(
             action="CERTIFICATE_PDF_EXPORTED",
@@ -277,7 +285,8 @@ class ExportService:
 
         payload = self._common_payload(data, "XLSX")
         payload["limits"] = await self._limits_for_protocol(run.protocol_id)
-        blob = build_run_xlsx(payload)
+        payload["branding"] = await BrandingService(self.session).load()
+        blob = await asyncio.to_thread(build_run_xlsx, payload)
 
         await AuditService(self.session).record(
             action="RUN_XLSX_EXPORTED",
@@ -343,6 +352,7 @@ class ExportService:
              "Locked", "Certificate SHA-256"],
             rows,
             [22, 16, 16, 14, 18, 22, 22, 8, 68],
+            branding=await BrandingService(self.session).load(),
         )
         buf = __import__("io").BytesIO()
         wb.save(buf)
@@ -400,6 +410,7 @@ class ExportService:
                 for a in rows
             ],
             [22, 18, 14, 30, 18, 38, 50, 20, 66],
+            branding=await BrandingService(self.session).load(),
         )
         buf = __import__("io").BytesIO()
         wb.save(buf)
