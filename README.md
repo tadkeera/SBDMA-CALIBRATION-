@@ -171,7 +171,7 @@ https://<project>.vercel.app/api/v1/*    →  api   (FastAPI من backend/، ent
 | محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npx vitest run` |
 | طبقة التكيّف مع الخادم (TypeScript) | 15 | ✅ ناجحة | `npx vitest run` |
 | توليد رمز TOTP للحزمة (TypeScript، متجهات RFC) | 4 | ✅ ناجحة | `npx vitest run` |
-| محرك الحسابات + API + الحوكمة + التقارير + الترويسة + المرفقات + حدّ الطلبات + حراسة النشر + حماية E2E (Python/PostgreSQL/Redis) | 239 | ✅ ناجحة | `cd backend && pytest` |
+| محرك الحسابات + API + الحوكمة + التقارير + الترويسة + المرفقات + حدّ الطلبات + حراسة النشر + حماية E2E (Python/PostgreSQL/Redis) | 240 | ✅ ناجحة | `cd backend && pytest` |
 | بوابة CI (PostgreSQL 16 + Redis 8 خدميين، تغطية ≥ 85%) | 4 وظائف | ✅ | `.github/workflows/ci.yml` |
 | **حزمة E2E داخل المستودع** (Playwright/Chromium على بنية إنتاج) | **18 اختباراً** | ✅ دخول ← 20 اختباراً ← مراجعة ← اعتماد ← شهادة PDF/XLSX ← سلسلة التدقيق ← إعداد الترويسة | `npm run e2e:prepare && npm run e2e` |
 

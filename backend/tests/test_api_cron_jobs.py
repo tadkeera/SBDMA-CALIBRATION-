@@ -37,7 +37,7 @@ async def test_without_a_secret_the_route_refuses_to_run(client) -> None:  # noq
     original = settings.cron_secret
     settings.cron_secret = None
     try:
-        for path in ("calibration-due", "kpi-report"):
+        for path in ("calibration-due", "kpi-report", "seed"):
             response = await client.post(f"/api/v1/internal/jobs/{path}")
             assert response.status_code == 503
             assert response.json()["errors"][0]["code"] == "CRON_NOT_CONFIGURED"
@@ -167,6 +167,58 @@ async def test_a_retried_cron_does_not_file_the_same_week_twice(
         assert forced.json()["data"]["documents"]
     finally:
         settings.storage_path = original_storage
+
+
+async def test_the_seed_job_registers_the_protocol_once_and_is_audited(
+    client, cron_settings
+) -> None:  # noqa: ANN001
+    """The serverless replacement for ``python -m app.seed``.
+
+    Production has no shell, so a bumped ``PROTOCOL_VERSION`` would otherwise leave the
+    database one release behind the code — and the only symptom is a report that
+    quietly disagrees with the written protocol. Called twice, the second call must
+    report ``skipped`` instead of duplicating the protocol: a calibration record points
+    at the version it was performed under, so versions are immutable once registered.
+    """
+    from app.domain.protocol.blueprint import PROTOCOL_CODE, PROTOCOL_VERSION
+
+    first = await client.post("/api/v1/internal/jobs/seed", headers=_auth())
+    assert first.status_code == 200, first.text
+    assert first.json()["success"] is True
+
+    second = await client.post("/api/v1/internal/jobs/seed", headers=_auth())
+    assert second.status_code == 200, second.text
+    assert second.json()["data"].get("skipped") == 1
+
+    from sqlalchemy import func, select
+
+    from app.core.database import SessionFactory
+    from app.models.audit import AuditLog
+    from app.models.protocol import CalibrationProtocol
+
+    async with SessionFactory() as session:
+        registered = (
+            await session.execute(
+                select(func.count())
+                .select_from(CalibrationProtocol)
+                .where(
+                    CalibrationProtocol.protocol_code == PROTOCOL_CODE,
+                    CalibrationProtocol.version == PROTOCOL_VERSION,
+                )
+            )
+        ).scalar_one()
+        assert registered == 1, "the protocol version must exist exactly once"
+
+        row = (
+            await session.execute(
+                select(AuditLog)
+                .where(AuditLog.action == "PROTOCOL_SEED_JOB_RAN")
+                .order_by(AuditLog.chain_seq.desc())
+                .limit(1)
+            )
+        ).scalar_one()
+        assert row.actor_label == "system:cron"
+        assert row.new_values["trigger"] == "http"
 
 
 async def test_scheduled_routes_are_not_in_the_public_api_document(client) -> None:  # noqa: ANN001

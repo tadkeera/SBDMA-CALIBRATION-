@@ -53,10 +53,17 @@
 |---|---|---|
 | إشعارات الانتهاء (يومياً 05:15) | `sbdma.notify.calibration_due` | `GET /api/v1/internal/jobs/calibration-due` |
 | تقرير مؤشرات الأداء (أسبوعياً الاثنين 04:30) | `sbdma.reports.kpi_report` | `GET /api/v1/internal/jobs/kpi-report` |
+| تسجيل بروتوكول المعايرة (عند كل إصدار) | `python -m app.seed` | `POST /api/v1/internal/jobs/seed` |
 
 المساران ينادوان **الخدمة نفسها**:
 `NotificationService.generate_due_notices` و`kpi_report_service.build_kpi_report`.
 لا نسخة ثانية من المنطق، فلا يمكن أن يصدر تقريران برقمين مختلفين لنفس السؤال.
+
+**لماذا `jobs/seed` موجود:** لا يوجد shell على منصة الدوال، فرفع `PROTOCOL_VERSION` في
+الـblueprint وحده يُبقي قاعدة البيانات على إصدار سابق — والعَرَض الوحيد تقرير
+يخالف البروتوكول المكتوب بصمت. المسار يجعل «الكود وقاعدة البيانات متفقان» طلباً
+واحداً موثَّقاً، وهو **عاديّ التكرار**: إن كان (code, version) موجوداً يعيد
+`{"skipped": 1}` ولا يعدّل صفاً قائماً — سجل معايرة يشير إلى الإصدار الذي أُجري تحته.
 
 **حراسة المسارات (`CRON_SECRET`):**
 - بدون `CRON_SECRET` تُرجع المسارات **503** ولا تنفّذ شيئاً. مسار مفتوح يكتب إشعارات
@@ -129,6 +136,10 @@ curl -s -o /dev/null -w '%{http_code}\n' https://<project>.vercel.app/api/v1/int
 
 curl -s -H "Authorization: Bearer $CRON_SECRET" \
      'https://<project>.vercel.app/api/v1/internal/jobs/calibration-due?today=2026-11-25' | jq .data
+
+# بعد كل إصدار يرفع PROTOCOL_VERSION: سجّل البروتوكول (عاديّ التكرار)
+curl -s -X POST -H "Authorization: Bearer $CRON_SECRET" \
+     https://<project>.vercel.app/api/v1/internal/jobs/seed | jq .data
 ```
 
 ---

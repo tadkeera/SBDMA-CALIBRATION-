@@ -11,6 +11,8 @@ call the same services:
   → :class:`app.services.notification_service.NotificationService`
 * ``sbdma.reports.kpi_report`` (Celery) / ``POST jobs/kpi-report`` (cron)
   → :func:`app.services.kpi_report_service.build_kpi_report`
+* ``python -m app.seed`` (shell) / ``POST jobs/seed`` (cron)
+  → :func:`app.seed.seed_protocol.seed_protocol`
 
 A second implementation would eventually disagree with the first, and the reader
 would have no way to tell which document an inspector is holding.
@@ -39,6 +41,7 @@ from app.api.deps import SessionDep, client_ip
 from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.schemas.common import ok
+from app.seed.seed_protocol import seed_protocol
 from app.services.audit_service import AuditService
 from app.services.kpi_report_service import build_kpi_report
 from app.services.notification_service import NotificationService
@@ -143,6 +146,40 @@ async def kpi_report(
             **_trigger_details(request),
         },
         reason="تشغيل مجدول لتقرير مؤشرات الأداء الأسبوعي",
+    )
+    await session.commit()
+    return ok(summary)
+
+
+@router.api_route(
+    "/seed",
+    methods=["GET", "POST"],
+    summary="تسجيل بروتوكول المعايرة (بديل الوصول إلى قاعدة البيانات)",
+)
+async def seed(request: Request, session: SessionDep):
+    """Register the shipped protocol version, idempotently.
+
+    Why over HTTP
+    -------------
+    A serverless deployment has no shell: bumping ``PROTOCOL_VERSION`` in the
+    blueprint would otherwise leave production executing last release's limits, and
+    the only symptom is a report that quietly disagrees with the document. This route
+    makes "the code and the database agree" a single authenticated POST.
+
+    It is safe to call on every deploy: :func:`seed_protocol` returns
+    ``{"skipped": 1}`` when that code/version already exists, and it never updates or
+    deletes an existing protocol — a calibration record points at the version it was
+    performed under.
+    """
+    _authorise(request)
+    summary = await seed_protocol(session)
+    await AuditService(session).record(
+        action="PROTOCOL_SEED_JOB_RAN",
+        entity_type="protocol",
+        entity_id=uuid.uuid4(),
+        actor_label=_actor_label(request),
+        new_values={**summary, **_trigger_details(request)},
+        reason="تسجيل بروتوكول المعايرة المُصدَّر مع الإصدار الحالي",
     )
     await session.commit()
     return ok(summary)
