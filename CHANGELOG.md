@@ -79,7 +79,7 @@
 ### التحقق
 | البند | النتيجة |
 |---|---|
-| `pytest` (PostgreSQL 17 + Redis 8 محلياً) | **214 ناجحاً** (كانت 200) |
+| `pytest` (PostgreSQL 17 + Redis 8 محلياً) | **217 ناجحاً** (كانت 200) · تغطية 90.5% |
 | التغطية (sysmon) | **90%** على `app/core` + `app/services` |
 | `vercel.json` مقابل مخطط Vercel الرسمي | **0 أخطاء** |
 | `tsc` / `vitest` / `next build` | نظيف · 37 · ✓ |
