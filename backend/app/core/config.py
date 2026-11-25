@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # --- application ---
     app_name: str = "SBDMA Laboratory Calibration & OQ Platform"
     # kept in step with /VERSION; surfaced by /health and the OpenAPI metadata
-    app_version: str = "2.0.0"
+    app_version: str = "2.1.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     debug: bool = False
@@ -94,6 +94,11 @@ class Settings(BaseSettings):
     smtp_host: str | None = None
     storage_path: str = "/tmp/sbdma-storage"
     max_upload_mb: int = 25
+    # Where the durable copy of a filed document lives. ``filesystem`` means the
+    # storage path *is* durable (a container with a volume). ``database`` adds a copy
+    # in ``stored_blobs``: on a serverless platform /tmp is per-instance and wiped
+    # between invocations, so the row would outlive the evidence it points at.
+    blob_backend: Literal["filesystem", "database"] = "filesystem"
 
     # --- observability ---
     log_level: str = "INFO"

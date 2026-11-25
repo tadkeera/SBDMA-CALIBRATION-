@@ -28,6 +28,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core import blobstore
 from app.core.config import get_settings
 from app.models.audit import AuditLog
 from app.services.audit_service import AuditService
@@ -125,6 +126,12 @@ async def build_kpi_report(
         # the file on disk must hash to what is about to be recorded
         if hashlib.sha256(path.read_bytes()).hexdigest() != digest:
             raise RuntimeError(f"written KPI report does not match its hash: {path}")
+        # a filed register must outlive the instance that produced it: /tmp does not
+        await blobstore.mirror(
+            str(path.relative_to(Path(settings.storage_path))),
+            content_type="application/pdf",
+            body=blob,
+        )
         written.append(
             {
                 "scope": scope,

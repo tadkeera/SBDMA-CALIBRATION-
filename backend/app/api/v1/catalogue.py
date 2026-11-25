@@ -38,6 +38,7 @@ from app.models.protocol import AcceptanceLimit, CalibrationProtocol, TestDefini
 from app.models.rbac import User
 from app.models.runs import MaintenanceTicket
 from app.models.runs import CalibrationAttachment
+from app.core import blobstore
 from app.services.attachment_service import (
     AttachmentError,
     discard_unregistered,
@@ -719,6 +720,10 @@ async def upload_attachment(
     finally:
         await file.close()
 
+    # durable copy before anything references it: on a serverless platform the file
+    # itself lives in /tmp and would not survive the instance
+    await blobstore.mirror(stored.storage_path, content_type=file.content_type)
+
     duplicate = (
         await session.execute(
             select(CalibrationAttachment).where(
@@ -785,6 +790,7 @@ async def upload_attachment(
         await session.rollback()
         # the row never existed, so no signed record points at these bytes
         await asyncio.to_thread(discard_unregistered, stored.storage_path)
+        await blobstore.forget(stored.storage_path)
         raise
 
     return ok(_attachment_out(attachment))
@@ -835,6 +841,9 @@ async def download_attachment(
     if row.instrument_id is not None:
         await _instrument_in_scope(row.instrument_id, session, principal)
 
+    # /tmp is not durable: restore the filed bytes from the database when the local
+    # copy is gone, and refuse to serve anything that does not match the record
+    await blobstore.materialise(row.storage_path, expected_sha=row.sha256_checksum)
     try:
         body, matches = await asyncio.to_thread(
             read_for_verification, row.storage_path, row.sha256_checksum

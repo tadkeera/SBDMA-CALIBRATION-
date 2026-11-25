@@ -1,0 +1,32 @@
+version: 2
+# Updates arrive as pull requests against a suite that already runs on every PR
+# (backend, frontend, E2E, security). A dependency bump that breaks the protocol
+# parity tests is exactly the news we want, and we want it before deploy day.
+updates:
+  - package-ecosystem: pip
+    directory: /backend
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor:
+        patterns: ['*']
+        update-types: [minor, patch]
+    labels: [dependencies, backend]
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor:
+        patterns: ['*']
+        update-types: [minor, patch]
+    labels: [dependencies, frontend]
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    labels: [dependencies, ci]

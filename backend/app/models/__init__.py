@@ -25,6 +25,7 @@ from app.models.runs import (
     CalibrationTestResult,
     MaintenanceTicket,
 )
+from app.models.storage import StoredBlob
 
 __all__ = [
     "Base",
@@ -32,6 +33,7 @@ __all__ = [
     "Permission",
     "Role",
     "RolePermission",
+    "StoredBlob",
     "User",
     "UserRole",
     "RefreshSession",

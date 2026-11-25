@@ -67,7 +67,9 @@ async def health(session: SessionDep):
             # effective limit is N times the configured one. Reporting it is the
             # difference between a degraded control and an invisible one.
             "rate_limit": limiter.backend,
-            "storage": settings.storage_path,
+            # the backend matters more than the path: "filesystem" on a serverless
+            # platform means the evidence is in /tmp and will not survive the instance
+            "storage": f"{settings.storage_path} ({settings.blob_backend})",
         },
     }
     return ok(payload)

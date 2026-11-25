@@ -1,0 +1,125 @@
+name: Security
+
+# What this guards: the four questions a security review asks first, answered on every
+# push instead of in a meeting — what is in the build (SBOM), is any of it known-bad
+# (advisories), did a credential get committed (secret scan), and can we still restore
+# (restore drill). The drill runs against a throwaway PostgreSQL, not production: a
+# rehearsal that needs production is a rehearsal nobody runs.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # advisories are published after the last commit, so the clock has to trigger a run
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  secrets:
+    name: No committed credentials
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Scan the tracked tree
+        # The allowlist is .github/secret-scan-allowlist.json; every entry carries a
+        # written reason, so an exception is a reviewed decision, not a mute button.
+        run: python scripts/scan_secrets.py
+
+  dependencies:
+    name: Known-vulnerable dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: pip-audit (backend runtime requirements)
+        run: |
+          pip install --quiet pip-audit
+          # runtime only: a CVE in a test-only package cannot reach production
+          pip-audit -r backend/requirements.txt --strict --progress-spinner off
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+      - name: npm audit (production dependencies)
+        run: npm audit --omit=dev --audit-level=high
+
+  sbom:
+    name: SBOM is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+      - name: Install the runtime requirements the SBOM describes
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip --quiet
+          pip install --quiet -r requirements.txt
+      - run: npm ci --ignore-scripts
+      - name: Regenerate and compare
+        # SOURCE_DATE_EPOCH-free on purpose: --check ignores the timestamp, so a stale
+        # SBOM fails on the dependency graph changing, never on the clock.
+        run: python scripts/generate_sbom.py --check
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom
+          path: sbom/*.cdx.json
+
+  restore-drill:
+    name: Backup + restore rehearsal
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: sbdma
+          POSTGRES_PASSWORD: sbdma_dev_pw
+          POSTGRES_DB: sbdma_drill
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U sbdma -d sbdma_drill"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql+asyncpg://sbdma:sbdma_dev_pw@127.0.0.1:5432/sbdma_drill
+      JWT_SECRET: drill-secret-0123456789abcdef0123456789abcdef
+      MFA_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef
+      ENVIRONMENT: test
+      COOKIE_SECURE: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements*.txt
+      - name: Install client + server tooling
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client
+      - name: Install the application (the drill verifies with its own verifier)
+        working-directory: backend
+        run: |
+          python -m pip install --upgrade pip --quiet
+          pip install --quiet -r requirements.txt
+          python -m alembic upgrade head
+          python -m app.seed
+      - name: Rehearse the restore
+        # Dumps the seeded database, restores it into a *fresh* database, then runs the
+        # application's chain verifier against the restored copy. A backup nobody has
+        # restored is a hope.
+        run: python scripts/restore_drill.py --source-url "$DATABASE_URL"
