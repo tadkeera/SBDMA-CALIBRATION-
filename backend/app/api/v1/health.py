@@ -10,92 +10,12 @@ from sqlalchemy import text
 
 from app.api.deps import PrincipalDep, SessionDep
 from app.core.config import get_settings
-from app.core.database import ping
 from app.core.ratelimit import limiter
 from app.schemas.common import ok
 from app.services.kpi_service import KpiService
 
 router = APIRouter(tags=["health"])
 settings = get_settings()
-
-
-@router.get("/health/db-probe", summary="تشخيص اتصال قاعدة البيانات")
-async def db_probe():
-    """What the *deployed* process actually does when it connects — no session used.
-
-    A pooler that refuses prepared statements fails identically to an outage, and no
-    shell exists on the platform to ask. This reports, without exposing a password or a
-    host: the connect arguments the engine was built with, and the outcome of connecting
-    the way the engine connects. Temporary: remove once the pooler behaviour is settled.
-    """
-    import asyncpg
-
-    from app.core.database import _connect_args, engine
-
-    import sqlalchemy
-
-    report: dict = {
-        "asyncpg_version": asyncpg.__version__,
-        "sqlalchemy_version": sqlalchemy.__version__,
-        "asyncpg_connect_name": getattr(asyncpg.connect, "__name__", "?"),
-        "dbapi_connect_name": getattr(engine.dialect.dbapi.connect, "__name__", "?"),
-        "pool_status": str(engine.pool.status())[:80],
-        "connect_arg_keys": sorted(_connect_args),
-        "statement_cache_size": _connect_args.get("statement_cache_size"),
-        "prepared_statement_cache_size": _connect_args.get("prepared_statement_cache_size"),
-        "engine_pool": type(engine.pool).__name__,
-        "raw": {},
-    }
-    url = engine.url
-    try:
-        conn = await asyncpg.connect(
-            user=url.username,
-            password=url.password,
-            host=url.host,
-            port=url.port or 5432,
-            database=url.database,
-            ssl=_connect_args.get("ssl") or None,
-            statement_cache_size=0,
-            timeout=8,
-        )
-    except Exception as exc:  # noqa: BLE001 - the point is to report the failure
-        report["raw"]["connect"] = f"{type(exc).__name__}: {str(exc)[:120]}"
-        return ok(report)
-    try:
-        for _ in range(3):
-            await conn.execute("SELECT 1")
-        report["raw"]["query"] = "ok"
-    except Exception as exc:  # noqa: BLE001
-        report["raw"]["query"] = f"{type(exc).__name__}: {str(exc)[:120]}"
-    finally:
-        await conn.close()
-
-    # The pooled connection itself: does *this* driver keep a statement cache?
-    try:
-        async with engine.connect() as pooled:
-            one = await pooled.exec_driver_sql("SELECT 1")
-            report["engine"] = {"query": str(one.scalar_one())}
-            try:
-                raw = pooled.sync_connection.connection  # noqa: F841 - force the wrap
-                dbapi_conn = raw.dbapi_connection
-                asyncpg_conn = getattr(dbapi_conn, "_connection", None)
-                report["engine"]["asyncpg_cache_enabled"] = getattr(
-                    asyncpg_conn, "_stmt_cache_enabled", "unknown"
-                )
-                report["engine"]["dialect_cache"] = (
-                    "none"
-                    if getattr(dbapi_conn, "_prepared_statement_cache", "absent") is None
-                    else "present"
-                )
-            except Exception as exc:  # noqa: BLE001
-                report["engine"]["inspect_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
-            names = await pooled.exec_driver_sql(
-                "SELECT count(*) FROM pg_prepared_statements"
-            )
-            report["engine"]["server_prepared_count"] = names.scalar_one()
-    except Exception as exc:  # noqa: BLE001
-        report["engine"] = {"pooled_error": f"{type(exc).__name__}: {str(exc)[:200]}"}
-    return ok(report)
 
 
 @router.get("/health/live", summary="فحص الحياة")
@@ -105,13 +25,11 @@ async def live():
 
 @router.get("/health/ready", summary="فحص الجهوزية")
 async def ready(session: SessionDep):
-    db_ok = await ping()
+    # The request already holds a connection. Asking a *second* one whether the database
+    # is up doubles what a health probe costs the pooler, and on a plan with fifteen
+    # clients that is how a health check starts causing the outage it is meant to detect.
+    db_ok = await _session_is_alive(session)
     checks = {"database": db_ok, "cache": None, "workers": None}
-    if db_ok:
-        try:
-            await session.execute(text("SELECT 1"))
-        except Exception:
-            checks["database"] = False
     status = "ready" if all(v is not False for v in checks.values()) else "degraded"
     return ok(
         {
@@ -130,7 +48,7 @@ async def health(session: SessionDep):
     true when the worker did not exist, and a lie the moment it did. A health
     endpoint that cannot be wrong is worth more than one that is optimistic.
     """
-    db_ok = await ping()
+    db_ok = await _session_is_alive(session)
     redis_state = await _probe_redis()
     worker_state = await _probe_workers()
     payload = {
@@ -160,6 +78,18 @@ async def health(session: SessionDep):
         },
     }
     return ok(payload)
+
+
+async def _session_is_alive(session) -> bool:  # noqa: ANN001 - AsyncSession, kept loose
+    """Is the database answering *this* session? One connection, the one already held."""
+    try:
+        await session.execute(text("SELECT 1"))
+        return True
+    except Exception as exc:  # noqa: BLE001 - a health probe reports, never raises
+        from app.core.logging import get_logger
+
+        get_logger("sbdma.health").warning("health database probe failed: %s", exc)
+        return False
 
 
 def _statement_cache_state() -> str:
