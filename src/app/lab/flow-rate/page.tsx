@@ -36,7 +36,12 @@ const READINGS = 10;
 
 /** Client-side preview. The *authoritative* numbers come from /flow-rate/calculate. */
 function preview(values: string[], nominal: number, accuracyPct: number) {
-  const nums = values.map((v) => Number(v)).filter((v) => v !== null && v !== undefined && Number.isFinite(v));
+  // `Number('')` is 0, which would make an untouched row look like a pump delivering nothing
+  // (mean 0.0000, accuracy −100 %). Empty cells are absent readings, not zero readings.
+  const nums = values
+    .filter((value) => value.trim() !== '')
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value));
   const n = nums.length;
   if (!n) {
     return { n: 0, mean: null as number | null, sd: null as number | null, rsd: null as number | null, acc: null as number | null };
@@ -111,17 +116,6 @@ export default function FlowRatePage() {
       return next;
     });
     // a hand-edited grid invalidates the previous server verdict
-    setEvaluation(null);
-  };
-
-  const fillRow = (rowIndex: number) => {
-    const nominal = definition?.set_points[rowIndex]?.nominal;
-    if (!nominal) return;
-    setGrid((prev) => {
-      const next = prev.map((row) => [...row]);
-      next[rowIndex] = Array.from({ length: READINGS }, (_, i) => (Number(nominal) + (i % 3) * 0.0001).toFixed(4));
-      return next;
-    });
     setEvaluation(null);
   };
 
@@ -353,7 +347,7 @@ export default function FlowRatePage() {
           'Enter the measured values in mL/min. The panel updates on every keystroke; the verdict comes from the server.',
         )}
         actions={
-          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
+          <span className="text-[11px] tabular" dir="ltr" style={{ color: 'var(--text-muted)' }}>
             {filled} / 30
           </span>
         }
@@ -365,16 +359,11 @@ export default function FlowRatePage() {
             const rsdPass = stats.rsd === null ? null : stats.rsd <= rsdPct;
             return (
               <div key={point.index} className="rounded-lg border p-2" style={{ borderColor: 'var(--border)' }}>
-                <div className="mb-1.5 flex flex-wrap items-center justify-between gap-2">
-                  <div className="flex items-center gap-2">
-                    <span className="chip chip-quiet mono">{point.nominal} mL/min</span>
-                    <span className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
-                      {t(`المدى المقبول ${point.lower_limit} – ${point.upper_limit}`, `Accepted band ${point.lower_limit} – ${point.upper_limit}`)}
-                    </span>
-                  </div>
-                  <button type="button" className="btn btn-ghost px-2 py-0.5 text-[10.5px]" onClick={() => fillRow(rowIndex)}>
-                    {t('تعبئة تجريبية', 'Demo fill')}
-                  </button>
+                <div className="mb-1.5 flex flex-wrap items-center gap-2">
+                  <span className="chip chip-quiet mono">{point.nominal} mL/min</span>
+                  <span className="text-[10.5px]" style={{ color: 'var(--text-muted)' }}>
+                    {t(`المدى المقبول ${point.lower_limit} – ${point.upper_limit}`, `Accepted band ${point.lower_limit} – ${point.upper_limit}`)}
+                  </span>
                 </div>
                 <div className="grid grid-cols-5 gap-1.5 md:grid-cols-10">
                   {Array.from({ length: READINGS }, (_, cellIndex) => {
