@@ -37,10 +37,20 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
     db_pool_recycle_seconds: int = 1800
     db_statement_timeout_ms: int = 30_000
-    #: Set when connecting through a transaction-mode pooler (port 6543 on Supabase,
-    #: `?pgbouncer=true` on Neon): such poolers cannot keep prepared statements between
-    #: transactions, so asyncpg's cache must be off or queries fail intermittently.
-    db_disable_prepared_statements: bool = False
+    #: Prepared statements are **off by default**, which is unusual and deliberate.
+    #:
+    #: A transaction-mode pooler (Supabase/Supavisor on :6543, pgbouncer, Neon) hands a
+    #: server connection to whichever client needs it next, so a statement prepared by
+    #: one client still exists when another prepares the same name — PostgreSQL answers
+    #: `DuplicatePreparedStatementError`, which surfaces as a 503 on about one request in
+    #: six. That was production: `/api/v1/branding` failed intermittently for days while
+    #: the database itself was perfectly healthy. The safe default is therefore off; the
+    #: cost is microseconds of parse time per query, the cost of being wrong is a
+    #: customer-facing outage that looks like a database fault. Set
+    #: ``DB_DISABLE_PREPARED_STATEMENTS=false`` only for a direct connection, and note the
+    #: URL check in ``database.engine_url_and_connect_args`` — a :6543 URL disables the
+    #: cache regardless of this flag.
+    db_disable_prepared_statements: bool = True
 
     # --- security ---
     jwt_secret: str = Field(default="dev_only_insecure_secret_replace_before_production")

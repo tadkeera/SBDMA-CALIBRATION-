@@ -186,6 +186,20 @@ PITR في Supabase (خطة Pro). كلاهما التزام تعاقدي لا ر�
 يبدأ بالمُضمَّن؛ (3) `FONT_BODY`/`FONT_STRONG` هما الاسمين المُسجَّلين فعلاً، وأي فشل تسجيل يُسقط
 إلى Helvetica (تشكيل عربي أقل، لا انهيار)؛ (4) اختبارات `test_report_fonts.py` تمنع عودة المشكلة.
 
+**حادثة ثالثة — `503 DATABASE_UNAVAILABLE` وقاعدة سليمة (2026-11-26):** استطلاع متكرر على
+`/api/v1/branding` أعاد `503` في نحو طلب من كل ستة، بينما `/health` يقول `postgresql: up`.
+لا shell ولا وصول إلى السجلات، فأُضيف رأس تشخيصي مؤقت `X-Db-Error` (خلف `DB_ERROR_HEADER=1`)
+يحمل اسم نوع الاستثناء — ومنه ظهر السبب في استجابة واحدة:
+`asyncpg.exceptions.DuplicatePreparedStatementError: prepared statement "__asyncpg_stmt_8__"
+already exists`. مجمّع المعاملات يعطي اتصال الخادم لعميل آخر، فيصطدم تحضير العبارة باسم محضّر
+سابقاً. ثلاث ضوابط: (1) **تعطيل ذاكرة العبارات المحضّرة افتراضياً** — الكلفة ميكروثوانٍ،
+والكلفة عند الخطأ انقطاع يبدو كعطل قاعدة بيانات؛ (2) منفذ `:6543` أو `?pgbouncer=true` يعطّل
+الذاكرة **مهما قال المتغير**، لأن راية قد تكون خاطئة لا يجوز أن تتقدّم على عنوان صريح؛
+(3) المحاولة الرباعية على الاتصال (`connect_with_retry`) وقائمة أخطاء عابرة تشمل أغلفة
+SQLAlchemy (`OperationalError`/`InterfaceError`/`DisconnectionError`) لا أنواع asyncpg وحدها —
+النسخة الأولى لم تعمل أبداً لأن SQLAlchemy يغلّف كل خطأ سائق. الاختبارات:
+`tests/test_database_connect.py` (5 اختبارات) و`test_a_refused_connection_is_retried_before_it_becomes_a_503`.
+
 **ملاحظة صريحة:** `rate_limit: memory` على Vercel يعني أن كل نسخة تعدّ وحدها، فالحدّ الفعلي
 = المضبوط × عدد النسخ. لذلك ضُبط الافتراضي متحفظاً، والانتقال إلى Redis هو P1 عند تجاوز 20
 مستخدماً متزامناً (انظر `docs/load-test.md`).

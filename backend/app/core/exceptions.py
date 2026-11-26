@@ -269,7 +269,10 @@ def register_exception_handlers(app: FastAPI) -> None:
         import os as _os
 
         _headers = {"X-Request-Id": request_id_ctx.get()}
-        if _os.environ.get("DB_ERROR_HEADER", "1") == "1":  # diagnostic; set to 0 to silence
+        # Off by default: the class name of a driver error is infrastructure detail and
+        # these endpoints are public. `DB_ERROR_HEADER=1` turns it on, which is how the
+        # pooler bug behind the intermittent 503s was identified in production.
+        if _os.environ.get("DB_ERROR_HEADER") == "1":
             _orig = getattr(exc, "orig", None)
             _text = f"{type(exc).__name__}/{type(_orig).__name__}: {str(_orig or exc)[:180]}"
             _headers["X-Db-Error"] = " ".join(_text.split())[:240]

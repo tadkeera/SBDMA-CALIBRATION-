@@ -41,9 +41,14 @@ def test_verify_full_keeps_certificate_verification() -> None:
 
 
 def test_a_local_url_needs_no_ssl_argument() -> None:
+    """A plain local connection carries no TLS settings.
+
+    The statement cache is off by default (see ``test_database_connect``), so the
+    assertion is about TLS specifically rather than about an empty dict.
+    """
     url, args = engine_url_and_connect_args("postgresql+asyncpg://u:p@127.0.0.1:5432/db")
     assert url == "postgresql+asyncpg://u:p@127.0.0.1:5432/db"
-    assert args == {}
+    assert "ssl" not in args
 
 
 def test_transaction_pooler_disables_prepared_statements() -> None:

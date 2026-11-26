@@ -74,8 +74,17 @@ def engine_url_and_connect_args(database_url: str) -> tuple[str, dict]:
     # statements between transactions; asyncpg's cache has to be turned off there.
     if str(query.pop("prepared_statements", "")).lower() in {"0", "false"}:
         connect_args.update(prepared_statement_cache_size=0, statement_cache_size=0)
+    # Neon's spelling of the same condition, and not a keyword asyncpg understands
+    pgbouncer = str(query.pop("pgbouncer", "")).lower() in {"1", "true"}
 
-    if _settings.db_disable_prepared_statements:
+    # A transaction-mode pooler cannot keep prepared statements: the server-side name
+    # outlives the client that created it, and the next client's prepare collides
+    # (`DuplicatePreparedStatementError` → 503 on a healthy database). The port is the
+    # one unambiguous signal — :6543 is Supavisor/pgbouncer transaction mode, and
+    # `?pgbouncer=true` is Neon's spelling of the same thing — so it is honoured even
+    # when the setting says otherwise: a flag that can be wrong must not outrank the URL.
+    pooled = url.port == 6543 or pgbouncer
+    if _settings.db_disable_prepared_statements or pooled:
         connect_args.update(prepared_statement_cache_size=0, statement_cache_size=0)
 
     cleaned = url.set(query=query)
