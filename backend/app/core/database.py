@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 import ssl
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+
+import asyncpg
 
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
@@ -95,6 +98,53 @@ SessionFactory = async_sessionmaker(
 )
 
 
+#: Connection failures that mean "try again in a moment", not "this request is broken".
+#: A managed pooler refuses a connection when it is momentarily at its client limit
+#: (Supavisor answers exactly this way), and a cold function's first TLS handshake can
+#: time out. Both succeed on the next attempt; surfacing them as 503 tells a user reading
+#: the letterhead that the laboratory is down when it is not.
+TRANSIENT_CONNECT_ERRORS: tuple[type[BaseException], ...] = (
+    asyncio.TimeoutError,
+    ConnectionError,
+    OSError,
+    asyncpg.exceptions.CannotConnectNowError,
+    asyncpg.exceptions.ConnectionDoesNotExistError,
+    asyncpg.exceptions.TooManyConnectionsError,
+    asyncpg.exceptions.InterfaceError,
+)
+
+#: 3 attempts, 150 ms then 450 ms: long enough to ride out a pooler hiccup, short enough
+#: that a genuinely unreachable database still fails inside the platform's timeout.
+CONNECT_ATTEMPTS = 3
+CONNECT_BACKOFF_SECONDS = 0.15
+
+
+async def connect_with_retry(session: AsyncSession, *, attempts: int = CONNECT_ATTEMPTS) -> None:
+    """Acquire the session's connection, retrying transient failures.
+
+    The connection is acquired once, explicitly, and reused by every query in the
+    request — so the retry costs nothing on the happy path and cannot multiply work.
+    """
+    delay = CONNECT_BACKOFF_SECONDS
+    for attempt in range(1, attempts + 1):
+        try:
+            await session.connection()
+            return
+        except TRANSIENT_CONNECT_ERRORS as exc:
+            if attempt == attempts:
+                log.error(
+                    "database connection failed",
+                    extra={"extra_fields": {"attempts": attempt, "error": str(exc)}},
+                )
+                raise
+            log.warning(
+                "database connection refused, retrying",
+                extra={"extra_fields": {"attempt": attempt, "error": str(exc)}},
+            )
+            await asyncio.sleep(delay)
+            delay *= 3
+
+
 @asynccontextmanager
 async def session_scope() -> AsyncIterator[AsyncSession]:
     """Transactional scope: commits on success, rolls back on any exception."""
@@ -111,6 +161,7 @@ async def get_session() -> AsyncIterator[AsyncSession]:
     """FastAPI dependency. The router layer commits through the service layer."""
     async with SessionFactory() as session:
         try:
+            await connect_with_retry(session)
             yield session
         except Exception:
             await session.rollback()

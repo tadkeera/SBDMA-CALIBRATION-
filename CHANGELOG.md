@@ -46,6 +46,13 @@
   `/usr/share/fonts/...` غير الموجود على منصة الدوال. الخط صار **مُضمَّناً** في
   `backend/app/assets/fonts/` (مع ترخيصه)، والبحث يبدأ به، وأي فشل يسقط إلى Helvetica بدل
   الانهيار. اختبارات `test_report_fonts.py` تمنع العودة.
+- **`503 DATABASE_UNAVAILABLE` عابر على قاعدة سليمة:** رصدته 12 استطلاعاً متتالياً على
+  `/api/v1/branding` — 503 واحد فقط، بينما `/health` يتذبذب `postgresql: down`/`up`. السبب ليس
+  عطلاً في PostgreSQL بل رفض اتصال لحظي من مجمّع Supavisor (حدّ العملاء + مصافحة أولى باردة).
+  صار `get_session()` يحصل على الاتصال عبر `connect_with_retry()`: ثلاث محاولات بفاصل
+  0.15s ← 0.45s، ولا يُترجم إلى `503` إلا إذا فشلت كلها — فالعطل الحقيقي يبقى مرئياً والعطل
+  العابر لا يصل إلى المستخدم. اختبار `test_blob_storage.py::test_a_refused_connection_is_retried_before_it_becomes_a_503`
+  يثبت الحالتين: الانتعاش بعد محاولتين، والفشل بعد الثالثة.
 
 ### أُضيف — بوابة الأمان (المرحلة 10)
 - **`.github/workflows/security.yml`:** ماسح أسرار، `pip-audit --strict` للتبعيات التشغيلية،

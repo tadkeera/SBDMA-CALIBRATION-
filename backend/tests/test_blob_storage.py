@@ -256,3 +256,45 @@ async def test_a_lost_upload_prints_the_shipped_mark(client, admin_session, dura
     cleared = await client.delete("/api/v1/branding/logo", headers=admin_session["hash"])
     assert cleared.status_code == 200
     assert cleared.json()["data"]["logo"]["bundled"] is True
+
+
+async def test_a_refused_connection_is_retried_before_it_becomes_a_503() -> None:
+    """A pooler hiccup is not an outage.
+
+    Production answered 503 DATABASE_UNAVAILABLE while the database was healthy: a managed
+    pooler refuses a connection at its client limit, and a cold function's first handshake
+    can time out. The dependency now acquires the connection with a short backoff, so the
+    next attempt usually succeeds and the user never learns it happened.
+    """
+    from app.core.database import CONNECT_ATTEMPTS, connect_with_retry
+    from app.core.database import SessionFactory
+
+    attempts = {"n": 0}
+
+    class Flaky:
+        """A session whose first N connections are refused, then succeeds."""
+
+        def __init__(self, session, failures: int) -> None:
+            self._session = session
+            self._failures = failures
+
+        async def connection(self):  # noqa: ANN201
+            attempts["n"] += 1
+            if attempts["n"] <= self._failures:
+                raise ConnectionError("pooler refused (simulated)")
+            return await self._session.connection()
+
+    assert CONNECT_ATTEMPTS >= 2
+
+    async with SessionFactory() as session:
+        flaky = Flaky(session, failures=CONNECT_ATTEMPTS - 1)
+        await connect_with_retry(flaky)  # type: ignore[arg-type]
+    assert attempts["n"] == CONNECT_ATTEMPTS
+
+    # and a database that is genuinely unreachable still fails, after the last attempt
+    attempts["n"] = 0
+    async with SessionFactory() as session:
+        broken = Flaky(session, failures=99)
+        with pytest.raises(ConnectionError):
+            await connect_with_retry(broken)  # type: ignore[arg-type]
+    assert attempts["n"] == CONNECT_ATTEMPTS
