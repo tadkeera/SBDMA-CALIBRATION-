@@ -24,6 +24,7 @@ from app.services.report_service import (
     build_certificate_pdf,
     build_run_xlsx,
     document_id,
+    _fmt,
 )
 from app.services.test_certificate import build_test_certificate_pdf
 
@@ -339,11 +340,14 @@ class ExportService:
         metrics_payload: list[list[str]] = []
         for metric in result.metric_evaluations_jsonb or []:
             unit = metric.get("unit") or ""
-            value = metric.get("value")
+            # The stored value keeps full precision; the certificate prints six
+            # significant digits (the same rule as the run certificate) so a
+            # repeatability figure reads 0.104881 nm instead of forty digits.
+            shown = _fmt(metric.get("value"))
             metrics_payload.append(
                 [
                     metric.get("metric_key", ""),
-                    f"{value} {unit}".strip() if value not in (None, "") else "—",
+                    f"{shown} {unit}".strip() if shown != "—" else "—",
                     metric.get("limit_text") or "—",
                     metric.get("applied_source") or "—",
                     metric.get("status", ""),
@@ -365,10 +369,7 @@ class ExportService:
         }
         payload["readings"] = readings
         payload["metrics"] = metrics_payload
-        # the page count is unknown until layout; the footer prints "of N" — build once
-        # to count, then rebuild with the real total so the footer is never wrong
-        pdf = await asyncio.to_thread(build_test_certificate_pdf, payload)
-        payload["page_total"] = pdf.count(b"/Type /Page\n") or pdf.count(b"/Type /Page") or 1
+        # the renderer resolves the page total itself (two passes) so the footer is right
         pdf = await asyncio.to_thread(build_test_certificate_pdf, payload)
 
         await AuditService(self.session).record(

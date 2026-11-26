@@ -6,9 +6,9 @@
     "component": {
       "type": "application",
       "name": "sbdma-calibration-api",
-      "version": "2.2.0"
+      "version": "2.2.1"
     },
-    "timestamp": "2026-11-26T18:31:01Z"
+    "timestamp": "2026-11-26T19:13:51Z"
   },
   "components": [
     {
@@ -83,6 +83,13 @@
     },
     {
       "type": "library",
+      "name": "certifi",
+      "version": "2026.11.20",
+      "purl": "pkg:pypi/certifi@2026.11.20",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "cffi",
       "version": "2.1.1",
       "purl": "pkg:pypi/cffi@2.1.1",
@@ -121,6 +128,13 @@
       "name": "click-repl",
       "version": "0.4.1",
       "purl": "pkg:pypi/click-repl@0.4.1",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "coverage",
+      "version": "7.17.5",
+      "purl": "pkg:pypi/coverage@7.17.5",
       "scope": "required"
     },
     {
@@ -181,6 +195,13 @@
     },
     {
       "type": "library",
+      "name": "httpcore",
+      "version": "1.0.9",
+      "purl": "pkg:pypi/httpcore@1.0.9",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "httptools",
       "version": "0.9.0",
       "purl": "pkg:pypi/httptools@0.9.0",
@@ -188,9 +209,23 @@
     },
     {
       "type": "library",
+      "name": "httpx",
+      "version": "0.28.1",
+      "purl": "pkg:pypi/httpx@0.28.1",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "idna",
       "version": "3.20",
       "purl": "pkg:pypi/idna@3.20",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "iniconfig",
+      "version": "2.3.1",
+      "purl": "pkg:pypi/iniconfig@2.3.1",
       "scope": "required"
     },
     {
@@ -223,6 +258,13 @@
     },
     {
       "type": "library",
+      "name": "packaging",
+      "version": "26.4",
+      "purl": "pkg:pypi/packaging@26.4",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "pillow",
       "version": "13.0.0",
       "purl": "pkg:pypi/pillow@13.0.0",
@@ -233,6 +275,13 @@
       "name": "pip",
       "version": "26.2.2",
       "purl": "pkg:pypi/pip@26.2.2",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "pluggy",
+      "version": "1.7.0",
+      "purl": "pkg:pypi/pluggy@1.7.0",
       "scope": "required"
     },
     {
@@ -300,6 +349,27 @@
     },
     {
       "type": "library",
+      "name": "pytest",
+      "version": "8.3.4",
+      "purl": "pkg:pypi/pytest@8.3.4",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "pytest-asyncio",
+      "version": "0.26.0",
+      "purl": "pkg:pypi/pytest-asyncio@0.26.0",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "pytest-cov",
+      "version": "6.0.0",
+      "purl": "pkg:pypi/pytest-cov@6.0.0",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "python-bidi",
       "version": "0.6.12",
       "purl": "pkg:pypi/python-bidi@0.6.12",
@@ -336,8 +406,8 @@
     {
       "type": "library",
       "name": "PyYAML",
-      "version": "6.0.4",
-      "purl": "pkg:pypi/pyyaml@6.0.4",
+      "version": "6.0.2",
+      "purl": "pkg:pypi/pyyaml@6.0.2",
       "scope": "required"
     },
     {
@@ -446,5 +516,5 @@
       "scope": "required"
     }
   ],
-  "serialNumber": "urn:uuid:d3bd2ae7-a034-58ad-acb9-a2d26504321e"
+  "serialNumber": "urn:uuid:ea0a811d-17d0-5e6d-8ae2-a81687b5779a"
 }

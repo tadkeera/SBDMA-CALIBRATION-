@@ -20,6 +20,7 @@ What is proven here, in the order the release note states it:
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 from sqlalchemy import text
@@ -252,6 +253,32 @@ async def test_single_test_certificate_is_a_real_pdf(client, analyst, reviewer, 
     assert "T08" in printed
     assert cert_hash in printed
     assert "Recorded readings" in printed
+
+
+def _pages_in(pdf: bytes) -> int:
+    """Page count read from the document's page tree, not guessed from the render."""
+    tree = pdf.find(b"/Type /Pages")
+    assert tree != -1
+    # ReportLab writes the page tree as "<< /Count N /Kids [...] /Type /Pages >>"
+    match = None
+    for match in re.finditer(rb"/Count (\d+)", pdf[max(tree - 400, 0) : tree + 400]):
+        pass
+    assert match is not None
+    return int(match.group(1))
+
+
+async def test_single_test_certificate_footer_states_the_real_page_total(
+    client, analyst, reviewer, qa, instrument_id
+):
+    """The footer used to be guessed by counting "/Type /Page" in the bytes, which also
+    matches the "/Type /Pages" catalogue node and printed one page too many."""
+    run_id, _ = await _approved_run(client, analyst, reviewer, qa, instrument_id)
+    response = await client.get(f"/api/v1/reports/runs/{run_id}/tests/T08/certificate.pdf", headers=qa["hash"])
+    assert response.status_code == 200, response.text
+    pages = _pages_in(response.content)
+    printed = _pdf_text(response.content)
+    assert f"Page 1 of {pages}" in printed
+    assert f"Page {pages} of {pages}" in printed
 
 
 async def test_single_test_certificate_is_audited(client, analyst, reviewer, qa, instrument_id, admin_session):
