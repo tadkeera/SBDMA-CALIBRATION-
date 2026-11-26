@@ -13,7 +13,7 @@ email-validator==2.2.0
 python-multipart==0.0.20
 # redis-py 6.1+ is required by Celery 5.4's transport — the previous 5.2.1 pin
 # could not run a worker at all, which went unnoticed because redis was optional.
-redis==6.4.0
+redis==8.2.0
 celery==5.4.0
 # numpy / scipy / matplotlib deliberately absent: no module imports them. The math
 # engine is Decimal-based (NUMERIC(20,8) precision, no binary floats), statistics are
