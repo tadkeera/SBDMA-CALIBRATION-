@@ -74,9 +74,24 @@ async def health(session: SessionDep):
             # (Supabase session mode: 15). Publishing the per-instance pool is what makes
             # that arithmetic possible before it is learned from EMAXCONNSESSION.
             "db_pool": f"{settings.db_pool_size}+{settings.db_max_overflow} per instance",
+            # Prepared statements must be off behind a realistic pooler; publishing the
+            # *effective* setting is how an operator confirms it in the deployment that is
+            # actually serving, not in the source they are reading.
+            "db_statements": _statement_cache_state(),
         },
     }
     return ok(payload)
+
+
+def _statement_cache_state() -> str:
+    """``uncached`` when the live engine disables prepared statements, ``cached`` if not."""
+    from app.core.database import _connect_args
+
+    if _connect_args.get("statement_cache_size") == 0 and (
+        _connect_args.get("prepared_statement_cache_size") == 0
+    ):
+        return "uncached"
+    return "cached"
 
 
 #: Redis and the worker are optional: the API must boot and serve without them.

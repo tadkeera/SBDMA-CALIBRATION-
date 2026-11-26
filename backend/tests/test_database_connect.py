@@ -65,3 +65,11 @@ def test_a_duplicate_prepared_statement_is_not_reported_as_a_dead_database() -> 
         asyncpg.exceptions.DuplicatePreparedStatementError('prepared statement "x" already exists'),
     )
     assert isinstance(wrapped, TRANSIENT_CONNECT_ERRORS)
+
+
+async def test_health_publishes_the_effective_statement_cache(client) -> None:
+    """The deployment that serves must be able to say whether it is safe behind a pooler."""
+    response = await client.get("/api/v1/health")
+    assert response.status_code == 200, response.text
+    components = response.json()["data"]["components"]
+    assert components["db_statements"] == "uncached"
