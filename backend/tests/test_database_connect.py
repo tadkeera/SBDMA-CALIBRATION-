@@ -73,3 +73,29 @@ async def test_health_publishes_the_effective_statement_cache(client) -> None:
     assert response.status_code == 200, response.text
     components = response.json()["data"]["components"]
     assert components["db_statements"] == "uncached"
+
+
+async def test_the_driver_creator_forces_the_cache_off(monkeypatch) -> None:
+    """The last line of defence: the dialect's creator hook, not the SQLAlchemy kwarg.
+
+    Passing ``statement_cache_size=0`` through connect_args was measurably not enough on
+    the deployment platform — a pooled connection still prepared ``__asyncpg_stmt_2__``
+    while a direct ``asyncpg.connect`` in the same process succeeded. The hook is called
+    for every physical connection, so the argument cannot be dropped on the way.
+    """
+    import asyncpg
+
+    captured: dict = {}
+
+    async def fake_connect(*args: object, **kwargs: object) -> str:
+        captured.update(kwargs)
+        return "connection"
+
+    monkeypatch.setattr(asyncpg, "connect", fake_connect)
+    opened = await database.connect_without_statement_cache(
+        user="u", database="d", statement_cache_size=100, prepared_statement_cache_size=100
+    )
+    assert opened == "connection"
+    assert captured["statement_cache_size"] == 0
+    assert captured["max_cached_statement_lifetime"] == 0
+    assert "prepared_statement_cache_size" not in captured  # not an asyncpg keyword

@@ -46,6 +46,21 @@ def _ssl_context_for(sslmode: str) -> ssl.SSLContext:
     return context
 
 
+async def connect_without_statement_cache(*args: object, **kwargs: object) -> object:
+    """Open an asyncpg connection that never prepares a statement.
+
+    Used as the dialect's ``async_creator_fn``. ``statement_cache_size=0`` tells asyncpg
+    to send unnamed statements, which a transaction-mode pooler cannot collide on;
+    ``max_cached_statement_lifetime=0`` closes the door on caching even if a future asyncpg
+    reads the two differently. The alternative — trusting a kwarg that production proved
+    was dropped on the way to the driver — was a 503 on a healthy database.
+    """
+    kwargs["statement_cache_size"] = 0
+    kwargs["max_cached_statement_lifetime"] = 0
+    kwargs.pop("prepared_statement_cache_size", None)  # SQLAlchemy's own argument
+    return await asyncpg.connect(*args, **kwargs)
+
+
 def engine_url_and_connect_args(database_url: str) -> tuple[str, dict]:
     """Translate libpq-style query parameters SQLAlchemy's asyncpg driver rejects.
 
@@ -71,10 +86,14 @@ def engine_url_and_connect_args(database_url: str) -> tuple[str, dict]:
         connect_args["ssl"] = False
 
     # Prepared statements are always off, for every connection: see the note in
-    # ``config``. Both layers must be disabled — SQLAlchemy's asyncpg dialect keeps its
-    # own cache of named statements (``__asyncpg_stmt_N__``, the names in the production
-    # error) and asyncpg keeps another — so setting only one leaves the collision intact.
+    # ``config``. Setting the two arguments below is not enough on the platform we deploy
+    # to — measured, not assumed: a connection that goes through SQLAlchemy still prepared
+    # ``__asyncpg_stmt_2__`` while a direct ``asyncpg.connect(statement_cache_size=0)`` in
+    # the same process, against the same pooler, ran fine. So the driver is also forced
+    # through its own creator hook, which the asyncpg dialect calls for every connection:
+    # two independent mechanisms, because one of them was demonstrably ignored.
     connect_args.update(prepared_statement_cache_size=0, statement_cache_size=0)
+    connect_args["async_creator_fn"] = connect_without_statement_cache
 
     # URL spellings of the same intent are understood and removed: ``?prepared_statements=0``
     # and Neon's ``?pgbouncer=true`` are not keywords asyncpg accepts, and an unknown
