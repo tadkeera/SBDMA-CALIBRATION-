@@ -156,9 +156,24 @@ class BrandingService:
                 branding["logo_bytes"] = body
                 branding["logo_integrity_ok"] = integrity
             else:
-                # The row survived but the file did not: report it instead of
-                # silently printing a letterhead that lost its logo.
+                # The row survived but the file did not — an upload made before durable
+                # storage existed, or a replica that never had it. Report the loss, and
+                # print the shipped emblem rather than a letterhead with a hole in it:
+                # a missing file is a copy problem, not evidence of interference.
                 branding["logo_integrity_ok"] = False
+                branding["logo_fallback"] = "bundled"
+                shipped = _bundled_logo()
+                if shipped is not None:
+                    body = DEFAULT_LOGO_FILE.read_bytes()
+                    branding["logo"] = shipped
+                    branding["logo_bytes"] = body
+                    branding["logo_missing_upload"] = {
+                        "storage_path": logo.get("storage_path"),
+                        "sha256": logo.get("sha256"),
+                        "filename": logo.get("filename"),
+                        "updated_by": logo.get("updated_by"),
+                        "updated_at": logo.get("updated_at"),
+                    }
         return branding
 
     # ----------------------------------------------------------------- writing

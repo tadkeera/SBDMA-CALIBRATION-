@@ -213,3 +213,46 @@ async def test_the_copy_is_written_in_the_callers_transaction(durable) -> None:
             await session.execute(select(StoredBlob).where(StoredBlob.key == key))
         ).scalar_one_or_none() is None
     assert path.read_bytes() == body
+
+
+async def test_a_lost_upload_prints_the_shipped_mark(client, admin_session, durable) -> None:
+    """A logo whose bytes cannot be produced must not leave a hole in the letterhead.
+
+    Production had exactly this: an upload from before durable storage existed, a record
+    that says a 856 kB PNG is in force, and no file and no copy behind it. The honest
+    handling is to report the loss *and* print the agency's shipped emblem — a missing
+    copy is an operational problem, not evidence of interference (a checksum mismatch is,
+    and that path still refuses to serve anything).
+    """
+    from app.services.branding_service import DEFAULT_LOGO_FILE
+
+    upload = await client.post(
+        "/api/v1/branding/logo",
+        headers=admin_session["hash"],
+        files={"file": ("logo.png", _png("#123e6b"), "image/png")},
+    )
+    assert upload.status_code == 200, upload.text
+
+    # every copy disappears: the local file and the durable row
+    for path in (Path(get_settings().storage_path) / "branding").glob("logo.*"):
+        path.unlink()
+    async with SessionFactory() as session:
+        await session.execute(delete(StoredBlob))
+        await session.commit()
+
+    served = await client.get("/api/v1/branding/logo")
+    assert served.status_code == 200, "the letterhead must still print a mark"
+    assert served.content == DEFAULT_LOGO_FILE.read_bytes()
+
+    async with SessionFactory() as session:
+        from app.services.branding_service import BrandingService
+
+        loaded = await BrandingService(session).load()
+    assert loaded["logo_fallback"] == "bundled"
+    assert loaded["logo_integrity_ok"] is False
+    assert loaded["logo_missing_upload"]["sha256"], "the lost upload stays on the record"
+
+    # leave the register as we found it: the broken record is removed, not carried on
+    cleared = await client.delete("/api/v1/branding/logo", headers=admin_session["hash"])
+    assert cleared.status_code == 200
+    assert cleared.json()["data"]["logo"]["bundled"] is True
