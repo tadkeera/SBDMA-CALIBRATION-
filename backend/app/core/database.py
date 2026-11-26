@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import ssl
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 import asyncpg
 
@@ -164,15 +164,43 @@ async def get_session() -> AsyncIterator[AsyncSession]:
             await connect_with_retry(session)
             yield session
         except Exception:
-            await session.rollback()
+            # A session whose connection was never established has nothing to roll back;
+            # asking it to would raise a second, less informative error over the first.
+            with suppress(Exception):
+                await session.rollback()
             raise
 
 
-async def ping() -> bool:
-    try:
-        async with engine.connect() as conn:
-            await conn.execute(text("SELECT 1"))
-        return True
-    except Exception as exc:  # pragma: no cover - only on outage
-        log.error("database ping failed", extra={"extra_fields": {"error": str(exc)}})
-        return False
+async def _ping_once() -> None:
+    async with engine.connect() as conn:
+        await conn.execute(text("SELECT 1"))
+
+
+async def ping(attempts: int = CONNECT_ATTEMPTS) -> bool:
+    """Answer whether the database is *actually* down, not whether one handshake failed.
+
+    ``/health`` flapped ``postgresql: down`` → ``up`` on the same minute the API served
+    every request: each flap was a single refused handshake at the pooler. A health check
+    that cries outage on the first refusal trains people to ignore it, so — exactly like a
+    request — it retries the transient kind and reports a failure only when the connection
+    cannot be made at all. A non-transient error (bad credentials, missing database) is
+    still reported immediately: retrying it would only hide it.
+    """
+    delay = CONNECT_BACKOFF_SECONDS
+    for attempt in range(1, attempts + 1):
+        try:
+            await _ping_once()
+            return True
+        except TRANSIENT_CONNECT_ERRORS as exc:
+            if attempt == attempts:
+                log.error(
+                    "database ping failed",
+                    extra={"extra_fields": {"attempts": attempt, "error": str(exc)}},
+                )
+                return False
+            await asyncio.sleep(delay)
+            delay *= 3
+        except Exception as exc:  # pragma: no cover - configuration fault, not a hiccup
+            log.error("database ping failed", extra={"extra_fields": {"error": str(exc)}})
+            return False
+    return False  # pragma: no cover - loop always returns

@@ -298,3 +298,34 @@ async def test_a_refused_connection_is_retried_before_it_becomes_a_503() -> None
         with pytest.raises(ConnectionError):
             await connect_with_retry(broken)  # type: ignore[arg-type]
     assert attempts["n"] == CONNECT_ATTEMPTS
+
+
+async def test_health_does_not_call_the_database_down_on_one_refusal(monkeypatch) -> None:
+    """The health payload is a claim about the database, so it must survive a hiccup."""
+    from app.core import database
+
+    calls = {"n": 0}
+
+    async def flaky_once() -> None:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise ConnectionError("pooler refused (simulated)")
+
+    monkeypatch.setattr(database, "_ping_once", flaky_once)
+    assert await database.ping() is True
+    assert calls["n"] == 2
+
+    async def refuse_forever() -> None:
+        calls["n"] += 1
+        raise ConnectionError("pooler refused (simulated)")
+
+    calls["n"] = 0
+    monkeypatch.setattr(database, "_ping_once", refuse_forever)
+    assert await database.ping() is False
+    assert calls["n"] == database.CONNECT_ATTEMPTS
+
+    async def misconfigured() -> None:
+        raise RuntimeError("password authentication failed")
+
+    monkeypatch.setattr(database, "_ping_once", misconfigured)
+    assert await database.ping() is False  # not retried: retrying a wrong password is theatre
