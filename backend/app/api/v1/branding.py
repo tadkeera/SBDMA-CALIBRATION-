@@ -46,6 +46,7 @@ def _public_payload(branding: dict) -> dict:
                 "original_type": logo.get("original_type"),
                 "updated_at": logo.get("updated_at"),
                 "updated_by": logo.get("updated_by"),
+                "bundled": bool(logo.get("bundled")),
                 "url": "/api/v1/branding/logo",
             }
             if logo

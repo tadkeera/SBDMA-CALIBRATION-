@@ -125,3 +125,13 @@ def test_the_xlsx_letterhead_is_a_mirror_of_the_pdf_one() -> None:
     buffer = io.BytesIO()
     wb.save(buffer)
     assert buffer.getvalue()[:2] == b"PK"
+
+
+def test_the_official_mark_ships_with_the_application() -> None:
+    """A fresh deployment prints a complete letterhead, not an empty centre."""
+    from app.services import branding_service as bs
+
+    assert bs.DEFAULT_LOGO_FILE.is_file(), "the agency's emblem must ship with the app"
+    bundled = bs._bundled_logo()
+    assert bundled is not None and bundled["bundled"] is True
+    assert bundled["width"] and bundled["height"]

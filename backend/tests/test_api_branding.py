@@ -52,7 +52,11 @@ async def test_letterhead_defaults_are_public_and_exact(client):
     assert data["header_en"] == list(DEFAULT_HEADER_EN)
     assert len(data["header_ar"]) == len(data["header_en"]) == 4
     assert data["is_default"] is True
-    assert data["logo"] is None
+    # the official mark ships with the platform, so a fresh deployment prints a complete
+    # letterhead; `bundled` is what tells a reader this is the shipped default and not an
+    # upload the agency approved today
+    assert data["logo"]["bundled"] is True
+    assert data["logo"]["sha256"]
 
 
 async def test_letterhead_wording_matches_the_agency(client):
@@ -181,8 +185,13 @@ async def test_logo_can_be_removed(client, admin_session):
     ).status_code == 200
     removed = await client.delete("/api/v1/branding/logo", headers=admin_session["hash"])
     assert removed.status_code == 200
-    assert removed.json()["data"]["logo"] is None
-    assert (await client.get("/api/v1/branding/logo")).status_code == 404
+    # removing an upload reverts to the shipped mark; it does not leave a hole where the
+    # agency's emblem belongs
+    reverted = removed.json()["data"]["logo"]
+    assert reverted["bundled"] is True
+    served = await client.get("/api/v1/branding/logo")
+    assert served.status_code == 200
+    assert hashlib.sha256(served.content).hexdigest() == reverted["sha256"]
 
 
 # ─────────────────────────── how the reports use it ───────────────────────── #

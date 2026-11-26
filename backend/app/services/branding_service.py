@@ -36,6 +36,13 @@ from app.models.audit import SystemSetting
 from app.services.audit_service import AuditService
 
 HEADER_KEY = "report.header"
+
+#: The agency's official mark, shipped with the application the way the default
+#: letterhead wording is. A fresh deployment must print an official letterhead without
+#: anyone clicking through setup first — and an upload still overrides it, with the API
+#: saying which of the two a reader is looking at (``bundled: true``).
+ASSETS_DIR = Path(__file__).resolve().parents[1] / "assets"
+DEFAULT_LOGO_FILE = ASSETS_DIR / "SBDMAY-logo.webp"
 CATEGORY = "reports"
 
 #: The official letterhead, as the agency writes it. Four lines each, in order.
@@ -70,6 +77,31 @@ PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 JPEG_MAGIC = b"\xff\xd8\xff"
 
 
+def _bundled_logo() -> dict[str, Any] | None:
+    """Metadata for the shipped mark; ``None`` when the asset is missing."""
+    if not DEFAULT_LOGO_FILE.is_file():
+        return None
+    body = DEFAULT_LOGO_FILE.read_bytes()
+    try:
+        width, height = _image_size(body)
+    except Exception:  # noqa: BLE001 - a broken asset must not break the letterhead
+        width, height = None, None
+    return {
+        "storage_path": None,
+        "content_type": "image/webp",
+        "original_type": "image/webp",
+        "filename": DEFAULT_LOGO_FILE.name,
+        "bytes": len(body),
+        "sha256": hashlib.sha256(body).hexdigest(),
+        "width": width,
+        "height": height,
+        "converted": False,
+        "bundled": True,
+        "updated_at": None,
+        "updated_by": "system:bundled",
+    }
+
+
 class BrandingService:
     def __init__(self, session: AsyncSession) -> None:
         self.session = session
@@ -89,7 +121,7 @@ class BrandingService:
             "header_ar": list(value.get("header_ar") or DEFAULT_HEADER_AR),
             "header_en": list(value.get("header_en") or DEFAULT_HEADER_EN),
             "is_default": not row or not value.get("header_ar"),
-            "logo": value.get("logo"),
+            "logo": value.get("logo") or _bundled_logo(),
             "updated_at": value.get("updated_at"),
             "updated_by": value.get("updated_by"),
         }
@@ -103,6 +135,13 @@ class BrandingService:
         branding = await self.get()
         logo = branding.get("logo")
         branding["logo_bytes"] = None
+        if logo and logo.get("bundled"):
+            body = DEFAULT_LOGO_FILE.read_bytes() if DEFAULT_LOGO_FILE.is_file() else None
+            branding["logo_bytes"] = body
+            branding["logo_integrity_ok"] = (
+                body is not None and hashlib.sha256(body).hexdigest() == logo.get("sha256")
+            )
+            return branding
         if logo:
             # the logo is filed evidence of the letterhead: on a serverless platform the
             # file is in /tmp and gone after a cold start, so restore it from the
