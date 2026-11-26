@@ -100,7 +100,7 @@
 | `CORS_ORIGINS` | `https://<project>.vercel.app` | لا يُستخدم فعلياً مع الـrewrites، لكنه يبقى مضبوطاً |
 | `REDIS_URL` | `rediss://…` (Upstash) | اختياري؛ بدونه `rate_limit: memory` في `/health` |
 | `RATE_LIMIT_BACKEND` | `redis` أو `auto` | `redis` يجعل انقطاع الوسيط خطأ إعداد ظاهراً |
-| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `1` / `1` | لكل نسخة دالة. **مُقاس:** مجمّع Supabase في وضع الجلسة يسمح بـ15 عميلاً لكل المشروع، والحدّ الافتراضي (2+3) استنزفه تحت الحمل (`EMAXCONNSESSION`). البديل الأفضل: منفذ المجمّع المعاملاتي `:6543` مع `DB_DISABLE_PREPARED_STATEMENTS=true` |
+| `DB_POOL_SIZE` / `DB_MAX_OVERFLOW` | `1` / `1` | لكل نسخة دالة. **مُقاس:** مجمّع Supabase في وضع الجلسة يسمح بـ15 عميلاً لكل المشروع، والحدّ الافتراضي (2+3) استنزفه تحت الحمل (`EMAXCONNSESSION`). البديل الأفضل: منفذ المجمّع المعاملاتي `:6543` (العبارات المحضّرة معطّلة دائماً في الكود، لا تحتاج متغيراً) |
 | `STORAGE_PATH` | `/tmp/sbdma-storage` | مؤقت — انظر القيود أدناه |
 | `BLOB_BACKEND` | `database` | **إلزامي هنا:** كل ملف مُودَع يُنسخ إلى `stored_blobs` ويُستعاد عند الطلب. على حاوية بقرص دائم اتركه `filesystem` |
 | `NEXT_PUBLIC_API_BASE_URL` | `/api/v1` | نسبي: يمرّ عبر الـrewrite على نفس النطاق |
@@ -225,7 +225,7 @@ npm run dev                                   # Next على 3000، يمرّر /a
    وبصيغة المستخدم `<role>.<project-ref>`.
 3. **Session pooler (5432) لا Transaction pooler (6543):** الثاني لا يحفظ الـprepared
    statements بين المعاملات. إن اضطررت إلى `6543` فاضبط
-   `DB_DISABLE_PREPARED_STATEMENTS=true` (مُدعّم ويُترجَم إلى تعطيل كاش asyncpg).
+   العبارات المحضّرة معطّلة **دائماً** في الكود (`database.engine_url_and_connect_args`) — لا متغير يشغّلها، لأن مجمّع المعاملات يعيد استخدام اتصال الخادم فتتصادم الأسماء المحضّرة (`DuplicatePreparedStatementError` → 503).
 
 ### تحصين Supabase
 Supabase يعرض مخطط `public` تلقائياً عبر PostgREST بمفتاح `anon` العام. جدول تدقيق
