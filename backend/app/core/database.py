@@ -105,6 +105,29 @@ def engine_url_and_connect_args(database_url: str) -> tuple[str, dict]:
     return cleaned.render_as_string(hide_password=False), connect_args
 
 
+def _force_dialect_cache_off() -> None:
+    """Make "no prepared statements" the dialect's default, not a per-engine argument.
+
+    Measured on the platform: the engine was created with ``statement_cache_size=0`` and
+    ``prepared_statement_cache_size=0``, a direct ``asyncpg.connect`` in the same process
+    with the same settings was clean — and a pooled connection still prepared
+    ``__asyncpg_stmt_2__``. Rather than keep hunting the layer that dropped the argument,
+    the dialect's own entry point is wrapped: whatever any engine passes, the cache is off.
+    """
+    from sqlalchemy.dialects.postgresql import asyncpg as asyncpg_dialect
+
+    original = asyncpg_dialect.AsyncAdapt_asyncpg_dbapi.connect
+
+    def connect_without_cache(self, *args: object, **kwargs: object) -> object:  # noqa: ANN001
+        kwargs["statement_cache_size"] = 0
+        kwargs["prepared_statement_cache_size"] = 0
+        return original(self, *args, **kwargs)
+
+    asyncpg_dialect.AsyncAdapt_asyncpg_dbapi.connect = connect_without_cache  # type: ignore[method-assign]
+
+
+_force_dialect_cache_off()
+
 _engine_url, _connect_args = engine_url_and_connect_args(_settings.database_url)
 
 engine = create_async_engine(

@@ -99,3 +99,33 @@ async def test_the_driver_creator_forces_the_cache_off(monkeypatch) -> None:
     assert captured["statement_cache_size"] == 0
     assert captured["max_cached_statement_lifetime"] == 0
     assert "prepared_statement_cache_size" not in captured  # not an asyncpg keyword
+
+
+def test_the_dialect_itself_refuses_to_cache(monkeypatch) -> None:
+    """Whatever an engine passes, the dialect's connect() turns the cache off.
+
+    This is the layer that production proved was not honouring the engine's arguments:
+    a pooled connection prepared ``__asyncpg_stmt_2__`` while a direct connect was clean.
+    """
+    from sqlalchemy.dialects.postgresql import asyncpg as asyncpg_dialect
+
+    captured: dict = {}
+
+    def fake_connect(self, *args: object, **kwargs: object) -> str:  # noqa: ANN001
+        captured.update(kwargs)
+        return "connection"
+
+    # the wrapper installed at import delegates to whatever `connect` is now in place
+    import app.core.database as database_module
+
+    original = asyncpg_dialect.AsyncAdapt_asyncpg_dbapi.connect
+    monkeypatch.setattr(asyncpg_dialect.AsyncAdapt_asyncpg_dbapi, "connect", fake_connect)
+    database_module._force_dialect_cache_off()
+    try:
+        dbapi = asyncpg_dialect.AsyncAdapt_asyncpg_dbapi(None)
+        assert dbapi.connect(statement_cache_size=100, prepared_statement_cache_size=100) == "connection"
+    finally:
+        monkeypatch.setattr(asyncpg_dialect.AsyncAdapt_asyncpg_dbapi, "connect", original)
+        database_module._force_dialect_cache_off()
+    assert captured["statement_cache_size"] == 0
+    assert captured["prepared_statement_cache_size"] == 0

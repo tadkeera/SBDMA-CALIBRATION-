@@ -27,6 +27,7 @@ from typing import TypeVar
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from app.core.config import get_settings
+from app.core.database import engine_url_and_connect_args
 
 T = TypeVar("T")
 
@@ -41,8 +42,15 @@ def run_with_session(work: Callable[[AsyncSession], Awaitable[T]]) -> T:
     """
 
     async def _run() -> T:
+        # The worker must build its engine exactly the way the API does. It used to pass
+        # the raw URL: no SSL translation, and — the part that mattered — a prepared
+        # statement cache, whose statements live on the pooler's *server* connections and
+        # collide with the API's (`DuplicatePreparedStatementError: __asyncpg_stmt_2__`).
+        # A second engine with different rules is a second way to fail.
+        url, connect_args = engine_url_and_connect_args(settings.database_url)
         engine = create_async_engine(
-            settings.database_url,
+            url,
+            connect_args=connect_args,
             pool_pre_ping=True,
             # A worker holds a connection for the length of one task; a small pool
             # is correct and a large one only multiplies the idle connections the
