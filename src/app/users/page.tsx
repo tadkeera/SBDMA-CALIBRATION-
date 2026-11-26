@@ -368,25 +368,13 @@ function CreateUserDialog({
             'You can only grant roles whose permissions you hold. Approval roles are blocked for account administrators to protect separation of duties.',
           )}
         >
-          <div className="flex flex-wrap gap-1.5">
-            {roles.map((role) => (
-              <button
-                type="button"
-                key={role.code}
-                className={`chip ${selected.includes(role.code) ? 'chip-pass' : 'chip-quiet'}`}
-                onClick={() => role.assignable && toggle(role.code)}
-                disabled={!role.assignable}
-                title={
-                  role.assignable
-                    ? `${role.name_ar} — ${role.permissions.join(', ')}`
-                    : t('غير قابل للإسناد من حسابك', 'Not assignable from your account')
-                }
-              >
-                {!role.assignable && <ShieldAlert size={13} />}
-                {lang === 'ar' ? role.name_ar : role.name_en}
-              </button>
-            ))}
-          </div>
+          <RoleChecklist
+            roles={roles}
+            selected={selected}
+            onToggle={(code) => toggle(code)}
+            disabledHint={t('غير قابل للإسناد من حسابك', 'Not assignable from your account')}
+            lang={lang}
+          />
         </Field>
 
         <Field label={t('سبب الإنشاء (يُسجَّل في التدقيق)', 'Reason (written to the audit trail)')}>
@@ -482,24 +470,15 @@ function ManageUserDialog({
           label={t('الأدوار', 'Roles')}
           hint={t('لا يمكنك تعديل أدوارك أنت، ولا منح دور أعلى من رتبتك.', 'You cannot edit your own roles, nor grant a role above your rank.')}
         >
-          <div className="flex flex-wrap gap-1.5">
-            {roles.map((role) => (
-              <button
-                type="button"
-                key={role.code}
-                className={`chip ${selected.includes(role.code) ? 'chip-pass' : 'chip-quiet'}`}
-                disabled={!role.assignable}
-                onClick={() =>
-                  setSelected((prev) =>
-                    prev.includes(role.code) ? prev.filter((c) => c !== role.code) : [...prev, role.code],
-                  )
-                }
-              >
-                {!role.assignable && <ShieldAlert size={13} />}
-                {lang === 'ar' ? role.name_ar : role.name_en}
-              </button>
-            ))}
-          </div>
+          <RoleChecklist
+            roles={roles}
+            selected={selected}
+            onToggle={(code) =>
+              setSelected((prev) => (prev.includes(code) ? prev.filter((c) => c !== code) : [...prev, code]))
+            }
+            disabledHint={t('غير قابل للإسناد من حسابك', 'Not assignable from your account')}
+            lang={lang}
+          />
         </Field>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -592,5 +571,70 @@ function ManageUserDialog({
         </Field>
       </div>
     </Modal>
+  );
+}
+
+/**
+ * Multi-role assignment as a checkbox list.
+ *
+ * A user in this laboratory is routinely an analyst *and* a department supervisor, and the
+ * form has to make "more than one role" the obvious, visible choice — chips read as a
+ * single-choice filter to most operators. Each checkbox carries the role's permissions in
+ * its tooltip so the person granting it can see what is being granted, and a role the
+ * server will refuse (above your rank, or an approval role while you administer accounts)
+ * is disabled rather than hidden: hiding it invites the belief that the role does not exist.
+ */
+function RoleChecklist({
+  roles,
+  selected,
+  onToggle,
+  disabledHint,
+  lang,
+}: {
+  roles: ServerRoleOption[];
+  selected: string[];
+  onToggle: (code: string) => void;
+  disabledHint: string;
+  lang: string;
+}) {
+  return (
+    <div className="grid gap-1.5 sm:grid-cols-2" role="group" aria-label="roles">
+      {roles.map((role) => {
+        const checked = selected.includes(role.code);
+        return (
+          <label
+            key={role.code}
+            title={role.assignable ? `${role.name_ar} — ${role.permissions.join(', ')}` : disabledHint}
+            className="flex cursor-pointer items-start gap-2 rounded-lg border px-2.5 py-1.5"
+            style={{
+              borderColor: checked ? 'var(--brand)' : 'var(--border)',
+              background: checked ? 'rgba(33,105,94,.08)' : 'transparent',
+              opacity: role.assignable ? 1 : 0.55,
+              cursor: role.assignable ? 'pointer' : 'not-allowed',
+            }}
+          >
+            <input
+              type="checkbox"
+              className="mt-0.5 h-3.5 w-3.5"
+              style={{ accentColor: 'var(--brand)' }}
+              checked={checked}
+              disabled={!role.assignable}
+              onChange={() => role.assignable && onToggle(role.code)}
+              aria-label={role.code}
+            />
+            <span className="min-w-0">
+              <span className="block text-[12px] font-semibold leading-tight">
+                {lang === 'ar' ? role.name_ar : role.name_en}
+              </span>
+              <span className="block text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                {role.code}
+                {!role.assignable && ' · '}
+                {!role.assignable && <ShieldAlert size={10} className="inline" />}
+              </span>
+            </span>
+          </label>
+        );
+      })}
+    </div>
   );
 }

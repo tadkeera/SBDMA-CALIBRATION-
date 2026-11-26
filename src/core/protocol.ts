@@ -1,7 +1,7 @@
 import type { AcceptanceLimit, LimitSource, TestSpec } from './types';
 
 /**
- * 'HPLC-SHIMADZU-LC2050C-PROTOCOL' v'2.0.0'
+ * 'HPLC-SHIMADZU-LC2050C-PROTOCOL' v'2.1.0'
  * 'HPLC SHIMADZU LC 2050 C PROTOCOL'
  * 'بروتوكول معايرة وتحقق أداء جهاز HPLC SHIMADZU LC 2050 C الموحد'
  *
@@ -12,13 +12,13 @@ import type { AcceptanceLimit, LimitSource, TestSpec } from './types';
  * hand edit or a stale copy fails the build instead of shipping two disagreeing
  * engines.
  *
- * 20 tests · 93 acceptance limits · 75 formulas.
+ * 20 tests · 95 acceptance limits · 86 formulas.
  * Limits the source material classifies as conflicting are seeded as
  * CONFLICT_REQUIRES_QA so the engine can never issue a silent PASS on them.
  */
 
 export const PROTOCOL_CODE = 'HPLC-SHIMADZU-LC2050C-PROTOCOL';
-export const PROTOCOL_VERSION = '2.0.0';
+export const PROTOCOL_VERSION = '2.1.0';
 export const PROTOCOL_TITLE_AR = 'بروتوكول معايرة وتحقق أداء جهاز HPLC SHIMADZU LC 2050 C الموحد';
 export const PROTOCOL_TITLE_EN = 'HPLC SHIMADZU LC 2050 C PROTOCOL';
 
@@ -119,24 +119,35 @@ export const TESTS: TestSpec[] = [
       'حد القبول المعتمد: يجب ألا يتجاوز الخطأ ±1.0% عند أي سرعة.',
     ],
     procedureEn: [
-      'Set the pump to each specified flow rate (1.0, 1.5 and 2.0 mL/min) and allow the system to equilibrate for at least 10 minutes at each setting with water as the mobile phase.',
-      'Weigh a clean, dry 10 mL volumetric flask to 0.1 mg on a calibrated analytical balance and record the mass W1.',
-      'Start the pump at the set flow rate, simultaneously start a calibrated stopwatch, and collect the eluate directly into the flask for the measured collection time.',
-      'Stop the pump and the timer together, then re-weigh the flask to 0.1 mg and record W2. Convert the collected mass to volume using the water density at the recorded ambient temperature.',
-      'Repeat steps 2 to 4 for each flow rate, entering the set flow, the collected volume and the measured time for every replicate.',
-      'Calculate the actual flow and the percentage error for each setting; the largest absolute error across the three settings is the reported result.',
+      'Set the pump to 1.000 mL/min with degassed HPLC-grade water as the mobile phase and allow the pressure to stabilise for at least 10 minutes.',
+      'For each of the ten replicates, weigh a clean, dry 10 mL volumetric flask to 0.1 mg (W1), start the pump and a calibrated stopwatch together, and collect the eluate for the timed interval.',
+      'Stop the pump and the timer together, re-weigh the flask (W2), convert the collected mass to volume with the water density at the recorded ambient temperature, and compute the delivered flow for that replicate.',
+      'Enter the ten replicate flows (Runs 1–10) in mL/min for the 1.000 mL/min set point; the page recalculates the mean, SD, %RSD and %accuracy on every keystroke.',
+      'Repeat steps 1 to 4 for the 1.500 mL/min and 2.000 mL/min set points, ten replicates each, and enter them in the corresponding row of the grid.',
+      'Press Run Calibration to render the accuracy and control charts, then Save. The reported result is the worst absolute %accuracy and the worst %RSD across the three set points; acceptance is ±2.0 % accuracy and %RSD ≤ 1.0 %.',
     ],
     fields: [
-      { key: 'set_flow', labelAr: 'معدلات التدفق المضبوطة', labelEn: 'Set flow rates', type: 'series', unit: 'mL/min', length: 3, hintAr: 'القيم المعتمدة: 1.0, 1.5, 2.0' },
-      { key: 'collected_vol', labelAr: 'الحجم المجمع', labelEn: 'Collected volume', type: 'series', unit: 'mL', length: 3, hintAr: 'الحجم القياسي: 10.0, 10.0, 10.0' },
-      { key: 'actual_time', labelAr: 'الزمن المقاس بالثواني', labelEn: 'Measured time (s)', type: 'series', unit: 's', length: 3, hintAr: 'الزمن اللازم لملء 10.0 mL لكل سرعة' },
+      { key: 'flow_p1000', labelAr: 'قراءات معدل التدفق عند 1.000 mL/min', labelEn: 'Flow readings @ 1.000 mL/min', type: 'series', unit: 'mL/min', length: 10, hintAr: 'عشر قراءات مستقلة (Runs 1–10) — القيمة المضبوطة 1.000 mL/min، المدى المقبول 0.980–1.020' },
+      { key: 'flow_p1500', labelAr: 'قراءات معدل التدفق عند 1.500 mL/min', labelEn: 'Flow readings @ 1.500 mL/min', type: 'series', unit: 'mL/min', length: 10, hintAr: 'عشر قراءات مستقلة (Runs 1–10) — القيمة المضبوطة 1.500 mL/min، المدى المقبول 1.470–1.530' },
+      { key: 'flow_p2000', labelAr: 'قراءات معدل التدفق عند 2.000 mL/min', labelEn: 'Flow readings @ 2.000 mL/min', type: 'series', unit: 'mL/min', length: 10, hintAr: 'عشر قراءات مستقلة (Runs 1–10) — القيمة المضبوطة 2.000 mL/min، المدى المقبول 1.960–2.040' },
     ],
     formulas: [
-      { key: 'actual_flow', expression: '(collected_vol * 60) / actual_time', descriptionAr: 'التدفق الفعلي = (الحجم × 60) ÷ الزمن', descriptionEn: 'Actual flow = (volume × 60) / time', decimals: 4 },
-      { key: 'pct_error', expression: '((actual_flow - set_flow) / set_flow) * 100', descriptionAr: 'نسبة الخطأ المئوية', descriptionEn: '%Error', decimals: 3 },
-      { key: 'max_abs_error', expression: 'max(abs(pct_error))', descriptionAr: 'أقصى خطأ مطلق', descriptionEn: 'Max absolute error', decimals: 3 },
+      { key: 'mean_p1000', expression: 'mean(flow_p1000)', descriptionAr: 'متوسط قراءات 1.000 mL/min', descriptionEn: 'Mean @ 1.000 mL/min', decimals: 4 },
+      { key: 'sd_p1000', expression: 'sd(flow_p1000)', descriptionAr: 'الانحراف المعياري عند 1.000 mL/min', descriptionEn: 'SD @ 1.000 mL/min', decimals: 5 },
+      { key: 'rsd_p1000', expression: 'rsd(flow_p1000)', descriptionAr: 'معامل الاختلاف عند 1.000 mL/min', descriptionEn: '%RSD @ 1.000 mL/min', decimals: 3 },
+      { key: 'acc_p1000', expression: 'pct_error(mean_p1000, 1.0)', descriptionAr: 'دقة 1.000 mL/min', descriptionEn: '%Accuracy @ 1.000 mL/min', decimals: 3 },
+      { key: 'mean_p1500', expression: 'mean(flow_p1500)', descriptionAr: 'متوسط قراءات 1.500 mL/min', descriptionEn: 'Mean @ 1.500 mL/min', decimals: 4 },
+      { key: 'sd_p1500', expression: 'sd(flow_p1500)', descriptionAr: 'الانحراف المعياري عند 1.500 mL/min', descriptionEn: 'SD @ 1.500 mL/min', decimals: 5 },
+      { key: 'rsd_p1500', expression: 'rsd(flow_p1500)', descriptionAr: 'معامل الاختلاف عند 1.500 mL/min', descriptionEn: '%RSD @ 1.500 mL/min', decimals: 3 },
+      { key: 'acc_p1500', expression: 'pct_error(mean_p1500, 1.5)', descriptionAr: 'دقة 1.500 mL/min', descriptionEn: '%Accuracy @ 1.500 mL/min', decimals: 3 },
+      { key: 'mean_p2000', expression: 'mean(flow_p2000)', descriptionAr: 'متوسط قراءات 2.000 mL/min', descriptionEn: 'Mean @ 2.000 mL/min', decimals: 4 },
+      { key: 'sd_p2000', expression: 'sd(flow_p2000)', descriptionAr: 'الانحراف المعياري عند 2.000 mL/min', descriptionEn: 'SD @ 2.000 mL/min', decimals: 5 },
+      { key: 'rsd_p2000', expression: 'rsd(flow_p2000)', descriptionAr: 'معامل الاختلاف عند 2.000 mL/min', descriptionEn: '%RSD @ 2.000 mL/min', decimals: 3 },
+      { key: 'acc_p2000', expression: 'pct_error(mean_p2000, 2.0)', descriptionAr: 'دقة 2.000 mL/min', descriptionEn: '%Accuracy @ 2.000 mL/min', decimals: 3 },
+      { key: 'max_abs_error', expression: 'max(abs(acc_p1000), abs(acc_p1500), abs(acc_p2000))', descriptionAr: 'أقصى خطأ دقة مطلق', descriptionEn: 'Worst absolute %accuracy', decimals: 3 },
+      { key: 'max_rsd', expression: 'max(rsd_p1000, rsd_p1500, rsd_p2000)', descriptionAr: 'أقصى معامل اختلاف', descriptionEn: 'Worst %RSD', decimals: 3 },
     ],
-    metrics: ['max_abs_error'],
+    metrics: ['max_abs_error', 'max_rsd'],
     chart: 'flow',
     mandatory: true,
   },
@@ -753,7 +764,7 @@ export const TESTS: TestSpec[] = [
   },
 ];
 
-/** 93 acceptance limits, one row per (test, metric, source). */
+/** 95 acceptance limits, one row per (test, metric, source). */
 export const LIMITS: AcceptanceLimit[] = [
   L('T01', 'wavelength_dev_abs', 'INTEGRITY_GUIDE_CH2', 'lte', null, 1, 'nm', A),
   L('T01', 'wavelength_dev_abs', 'AUTHORITY_LIMIT', 'lte', null, 1, 'nm', A, 'Shimadzu Ch.2 / USP <857> UV'),
@@ -774,7 +785,9 @@ export const LIMITS: AcceptanceLimit[] = [
   L('T02', 'max_abs_error', 'INTEGRITY_GUIDE_CH2', 'lte', null, 2, '%', A, 'حد شيمادزو Ch.2 المرجعي (±2.0%)'),
   L('T02', 'max_abs_error', 'IOQ_PROTOCOL_CH4', 'lte', null, 2.5, '%', A, 'حد iOQ الوزني (±2.5%)'),
   L('T02', 'max_abs_error', 'MANUFACTURER_SPEC', 'lte', null, 1, '%', A, 'مواصفة المصنع (±1.0%)'),
-  L('T02', 'max_abs_error', 'AUTHORITY_LIMIT', 'lte', null, 1, '%', A, 'حد معتمد مخصص: 1.0, 1.5, 2.0 mL/min بحجم 10 mL وحد ±1.0%'),
+  L('T02', 'max_abs_error', 'AUTHORITY_LIMIT', 'lte', null, 2, '%', A, 'الحد المعتمد (v2.1.0): الدقة ±2.0% أي 98.0–102.0% عند 1.000 و1.500 و2.000 mL/min — طلب الهيئة؛ صف المصنع ±1.0% باقٍ وقابل للاختيار كسياسة تشغيل'),
+  L('T02', 'max_rsd', 'AUTHORITY_LIMIT', 'lte', null, 1, '%', A, 'الحد المعتمد (v2.1.0): %RSD ≤ 1.0% عبر عشر قراءات لكل نقطة ضبط'),
+  L('T02', 'max_rsd', 'SOP_LIMIT', 'lte', null, 1, '%', A, 'إجراء التشغيل القياسي: %RSD ≤ 1.0%'),
   L('T03', 'pulsation', 'INTEGRITY_GUIDE_CH2', 'lte', null, 0.2, 'MPa', A),
   L('T03', 'pulsation', 'AUTHORITY_LIMIT', 'lte', null, 0.2, 'MPa', A),
   L('T04', 'max_abs_dev', 'INTEGRITY_GUIDE_CH2', 'lte', null, 2, '%', A),

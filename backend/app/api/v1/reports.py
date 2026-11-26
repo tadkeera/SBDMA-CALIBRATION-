@@ -54,10 +54,24 @@ async def test_certificate(
     request: Request,
     session: SessionDep,
     principal: PrincipalDep,
+    stage: str = Query(
+        default="OFFICIAL",
+        pattern="^(?i)(official|provisional)$",
+        description="OFFICIAL = الشهادة الموقّعة، PROVISIONAL = مسودة غير صالحة كشهادة",
+    ),
 ):
-    """One test, one document — same letterhead, same gate as the run certificate."""
+    """One test, one document — same letterhead, same gate as the run certificate.
+
+    ``stage=PROVISIONAL`` returns the watermarked draft of the same document for a run that
+    is executed but not yet reviewed and approved. It is not a certificate and says so on
+    every page.
+    """
     pdf, filename = await ExportService(session).test_certificate_pdf(
-        run_id=run_id, test_code=test_code.upper(), principal=principal, ip=client_ip(request)
+        run_id=run_id,
+        test_code=test_code.upper(),
+        principal=principal,
+        ip=client_ip(request),
+        stage=stage.upper(),
     )
     await session.commit()
     return _download(pdf, filename, "application/pdf")

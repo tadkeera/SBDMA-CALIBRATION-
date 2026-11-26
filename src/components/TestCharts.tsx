@@ -25,37 +25,65 @@ export function TestChart({ test, result }: { test: TestSpec; result?: RunTestRe
 
     switch (test.chart) {
       case 'flow': {
-        const set = rawArr('set_flow');
-        const actual = arr('actual_flow');
-        const err = arr('pct_error');
+        // T02 is ten replicates at each of 1.000 / 1.500 / 2.000 mL/min. The chart shows the
+        // mean against the accepted band, and carries %RSD on the second axis: an instrument
+        // can be perfectly accurate on average while wandering, and that is a failure too.
+        const labels = ['1.000', '1.500', '2.000'];
+        const keys = ['p1000', 'p1500', 'p2000'];
+        const means = keys.map((k) => n(`mean_${k}`));
+        const rsd = keys.map((k) => n(`rsd_${k}`));
+        const acc = keys.map((k) => n(`acc_${k}`));
+        const nominal = [1, 1.5, 2];
+        const band = nominal.map((v) => Number((v * 1.02).toFixed(3)));
         return {
           tooltip: { trigger: 'axis', ...baseTooltip },
-          grid: { left: 54, right: 54, top: 30, bottom: 38 },
+          grid: { left: 56, right: 56, top: 30, bottom: 40 },
           legend: { top: 0, textStyle: { color: c.axis, fontSize: 10.5 } },
-          xAxis: { type: 'category', data: set.map((x) => `${x}`), ...axis, name: t('التدفق المضبوط mL/min', 'Set mL/min'), nameLocation: 'middle', nameGap: 24, nameTextStyle: { color: c.axis, fontSize: 10 } },
+          xAxis: {
+            type: 'category',
+            data: labels,
+            ...axis,
+            name: t('التدفق المضبوط mL/min', 'Set mL/min'),
+            nameLocation: 'middle',
+            nameGap: 24,
+            nameTextStyle: { color: c.axis, fontSize: 10 },
+          },
           yAxis: [
-            { type: 'value', ...axis, name: t('التدفق الفعلي', 'Actual flow') },
-            { type: 'value', ...axis, name: t('الخطأ %', '% error'), splitLine: { show: false } },
+            { type: 'value', ...axis, name: t('المتوسط mL/min', 'Mean mL/min') },
+            { type: 'value', ...axis, name: t('النسبة %', '%'), splitLine: { show: false } },
           ],
           series: [
-            { name: t('مضبوط', 'Set'), type: 'bar', data: set, itemStyle: { color: c.grid }, barWidth: '28%' },
-            { name: t('فعلي', 'Actual'), type: 'bar', data: actual.map((x) => Number(x.toFixed(4))), itemStyle: { color: c.brand }, barWidth: '28%' },
             {
-              name: t('الخطأ %', '% error'),
+              name: t('المتوسط المقاس', 'Measured mean'),
+              type: 'bar',
+              data: means.map((x) => (Number.isFinite(x) ? Number(x.toFixed(4)) : null)),
+              itemStyle: { color: c.brand },
+              barWidth: '34%',
+            },
+            {
+              name: t('حد القبول +2%', '+2% limit'),
               type: 'line',
+              data: band,
+              symbol: 'none',
+              lineStyle: { width: 1.4, type: 'dashed', color: c.fail },
+              itemStyle: { color: c.fail },
+            },
+            {
+              name: t('الدقة %', '%accuracy'),
+              type: 'scatter',
               yAxisIndex: 1,
-              data: err.map((x) => Number(x.toFixed(3))),
-              symbolSize: 7,
-              lineStyle: { width: 2, color: c.accent },
+              data: acc.map((x) => (Number.isFinite(x) ? Number(x.toFixed(3)) : null)),
+              symbolSize: 8,
               itemStyle: { color: c.accent },
-              markLine: {
-                silent: true,
-                symbol: 'none',
-                data: [
-                  { yAxis: 2, lineStyle: { color: c.fail, type: 'dashed' }, label: { formatter: '+2.00%', color: c.fail, fontSize: 9 } },
-                  { yAxis: -2, lineStyle: { color: c.fail, type: 'dashed' }, label: { formatter: '−2.00%', color: c.fail, fontSize: 9 } },
-                ],
-              },
+            },
+            {
+              name: t('%RSD', '%RSD'),
+              type: 'scatter',
+              yAxisIndex: 1,
+              data: rsd.map((x) => (Number.isFinite(x) ? Number(x.toFixed(3)) : null)),
+              symbolSize: 8,
+              symbol: 'diamond',
+              itemStyle: { color: c.grid },
             },
           ],
         } as EChartsOption;

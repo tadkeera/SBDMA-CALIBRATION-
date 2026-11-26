@@ -64,7 +64,7 @@ async def clean_mfa_state():
                 user.failed_login_count = 0
                 user.locked_until = None
                 # restore the seeded role so a promotion cannot leak either
-                seeded = {"analyst.phys": "ANALYST", "analyst.chem": "ANALYST", "reviewer.phys": "TECHNICAL_REVIEWER"}[username]
+                seeded = {"analyst.phys": "ANALYST", "analyst.chem": "ANALYST", "reviewer.phys": "SUPERVISOR"}[username]
                 role = (await session.execute(select(Role).where(Role.code == seeded))).scalar_one()
                 user.roles = [role]
             await session.commit()

@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # --- application ---
     app_name: str = "SBDMA Laboratory Calibration & OQ Platform"
     # kept in step with /VERSION; surfaced by /health and the OpenAPI metadata
-    app_version: str = "2.2.1"
+    app_version: str = "2.3.0"
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     debug: bool = False
@@ -69,7 +69,7 @@ class Settings(BaseSettings):
     # the correct response to a suspected compromise.
     mfa_encryption_key: str = Field(default="dev_only_insecure_mfa_key_replace_before_production")
     mfa_issuer: str = "SBDMA"
-    mfa_enforced_roles: str = "SUPER_ADMIN,SYSTEM_ADMIN,QA_APPROVER,TECHNICAL_REVIEWER"
+    mfa_enforced_roles: str = "SUPER_ADMIN,SYSTEM_ADMIN,QA_APPROVER,SUPERVISOR"
     # how many 30s steps of drift to accept on each side (clock skew between phone and server)
     mfa_valid_window: int = 1
     cookie_secure: bool = True

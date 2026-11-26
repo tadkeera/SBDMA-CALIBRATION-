@@ -36,6 +36,7 @@ from reportlab.platypus import (
 
 from app.services.report_service import (
     BRAND,
+    FONT_AR_STRONG,
     FONT_BODY,
     FONT_STRONG,
     _header_table,
@@ -75,6 +76,20 @@ def _kv_table(st: dict[str, ParagraphStyle], rows: list[tuple[str, str]], widths
     return table
 
 
+APPROVED_COLOR = PASS_COLOR
+PENDING_COLOR = REVIEW_COLOR
+
+
+def _status_color(text: str):  # noqa: ANN202
+    """Green for a signature that exists, amber for one that is still pending."""
+    lowered = str(text).lower()
+    if lowered.startswith(("approved", "executed", "pass", "recorded")):
+        return APPROVED_COLOR
+    if lowered.startswith(("pending", "under")):
+        return PENDING_COLOR
+    return _verdict_color(str(text).upper())
+
+
 def _grid_table(
     st: dict[str, ParagraphStyle],
     header: list[str],
@@ -82,6 +97,7 @@ def _grid_table(
     widths: list[float] | None = None,
     *,
     verdict_col: int | None = None,
+    status_col: int | None = None,
 ) -> Table:
     data = [[Paragraph(f"<b>{h}</b>", st["cellb"]) for h in header]]
     style = [
@@ -93,6 +109,12 @@ def _grid_table(
     ]
     for index, row in enumerate(rows, start=1):
         cells = [Paragraph(str(cell), st["cell"]) for cell in row]
+        if status_col is not None and len(row) > status_col:
+            tone = _status_color(str(row[status_col]))
+            cells[status_col] = Paragraph(
+                f'<font color="{tone.hexval().replace("0x", "#")}"><b>{row[status_col]}</b></font>',
+                st["cell"],
+            )
         if verdict_col is not None and len(row) > verdict_col:
             colour = _verdict_color(str(row[verdict_col]))
             cells[verdict_col] = Paragraph(
@@ -118,17 +140,33 @@ def build_test_certificate_pdf(payload: dict[str, Any]) -> bytes:
     # ReportLab's logical-order renderer overlaps the two scripts. The closing line
     # therefore gets its own right-aligned Arabic run instead of being appended to
     # the document id.
-    ar_style = ParagraphStyle("cert_ar", parent=st["lh_ar"], fontSize=7.2, leading=11)
+    ar_style = ParagraphStyle("cert_ar", parent=st["lh_ar"], fontName=FONT_AR_STRONG, fontSize=7.2, leading=11)
     st["h2"].spaceBefore = 4
+
+    draft = str(payload.get("stage", "OFFICIAL")).upper() == "PROVISIONAL"
 
     def on_page(canvas, doc):  # noqa: ANN001
         canvas.saveState()
+        if draft:
+            # A draft must be recognisable from across the room and in a photocopy: the
+            # watermark runs diagonally behind the content on every page, and the footer
+            # repeats it in words. The official document never carries either.
+            canvas.saveState()
+            canvas.setFillColor(colors.Color(0.72, 0.36, 0.10, alpha=0.16))
+            canvas.setFont(FONT_STRONG, 54)
+            canvas.translate(A4[0] / 2, A4[1] / 2)
+            canvas.rotate(34)
+            canvas.drawCentredString(0, 18 * mm, "DRAFT")
+            canvas.setFont(FONT_STRONG, 15)
+            canvas.drawCentredString(0, 2 * mm, ar("مسودة غير صالحة كشهادة"))
+            canvas.restoreState()
         canvas.setFont(FONT_BODY, 7)
         canvas.setFillColor(colors.HexColor("#8a949e"))
         canvas.drawString(14 * mm, 9 * mm, payload["document_id"])
-        canvas.drawRightString(
-            A4[0] - 14 * mm, 9 * mm, f"Page {doc.page} of {payload['page_total']}  ·  {payload['generated_at']}"
-        )
+        footer = f"Page {doc.page} of {payload['page_total']}  ·  {payload['generated_at']}"
+        if draft:
+            footer = "DRAFT — NOT A CERTIFICATE  ·  " + footer
+        canvas.drawRightString(A4[0] - 14 * mm, 9 * mm, footer)
         canvas.setStrokeColor(LINE)
         canvas.line(14 * mm, 12 * mm, A4[0] - 14 * mm, 12 * mm)
         canvas.restoreState()
@@ -144,7 +182,7 @@ def build_test_certificate_pdf(payload: dict[str, Any]) -> bytes:
             _header_table(
                 st,
                 payload["subtitle"],
-                title_en="Test Calibration Certificate",
+                title_en=("Test Calibration Certificate — DRAFT" if draft else "Test Calibration Certificate"),
                 title_ar="شهادة معايرة اختبار",
             )
         )
@@ -270,16 +308,57 @@ def build_test_certificate_pdf(payload: dict[str, Any]) -> bytes:
         # fingerprint — is kept together: a signature table that breaks between the
         # analyst and the QA approver is exactly the thing an assessor queries. When
         # the block does not fit under section 3 it starts a second page as a whole.
+        # The certificate must state, in words, whether the supervisor and QA have signed —
+        # a PASS verdict is not an approval, and a sheet that only lists "Analyst" lets a
+        # reader assume the review happened. Each row carries the state ("Approved" or
+        # "Pending Review"), the name, the timestamp and a place for a wet signature.
+        approval = payload.get("approval") or {}
+        supervisor = approval.get("supervisor", {})
+        qa_state = approval.get("qa", {})
+        analyst_state = approval.get("analyst", {})
+
+        def stamp(entry: dict[str, Any]) -> str:
+            at = entry.get("at")
+            return (at or "—").replace("T", " ").replace("Z", " UTC") if at else "—"
+
+        def line(entry: dict[str, Any], approved: bool) -> str:
+            return "✔ electronically signed" if approved else "______________"
+
         sig_rows = [
-            [s["role"], s["name"], (s["at"] or "—").replace("T", " ").replace("Z", " UTC")]
-            for s in payload["signatures"]
+            [
+                "Analyst",
+                analyst_state.get("status", "Executed"),
+                analyst_state.get("name", "—"),
+                stamp(analyst_state),
+                "✔ " + str(analyst_state.get("at") or "recorded")[:10] if analyst_state.get("at") else "—",
+            ],
+            [
+                "Lab supervisor",
+                supervisor.get("status", "Pending Review"),
+                supervisor.get("name", "—"),
+                stamp(supervisor),
+                line(supervisor, bool(supervisor.get("at"))),
+            ],
+            [
+                "QA approver",
+                qa_state.get("status", "Pending QA Approval"),
+                qa_state.get("name", "—"),
+                stamp(qa_state),
+                line(qa_state, bool(qa_state.get("at"))),
+            ],
         ]
         closing: list[Any] = [
             Spacer(1, 1.2 * mm),
             box,
             Spacer(1, 1.6 * mm),
-            Paragraph("4 · Electronic signatures", st["h2"]),
-            _grid_table(st, ["Role", "Signed by", "Date and time"], sig_rows, widths=[45 * mm, None, 55 * mm]),
+            Paragraph("4 · Approval status and electronic signatures", st["h2"]),
+            _grid_table(
+                st,
+                ["Role", "Status", "Signed by", "Date and time", "Signature"],
+                sig_rows,
+                widths=[26 * mm, 30 * mm, None, 34 * mm, 30 * mm],
+                status_col=1,
+            ),
             Spacer(1, 2 * mm),
             Paragraph(
                 f"Certificate fingerprint (SHA-256, run level): {run['certificate_hash'] or '—'}",

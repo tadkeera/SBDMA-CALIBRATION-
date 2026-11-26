@@ -134,11 +134,11 @@ class ExportService:
                 "meaning": "Executed the calibration and captured raw data",
             },
             {
-                "role": "Technical reviewer",
-                "role_ar": "المراجع الفني",
+                "role": "Supervisor review",
+                "role_ar": "مشرف المختبر",
                 "name": users[run.reviewer_id].username if run.reviewer_id in users else "—",
                 "at": self._iso(run.reviewed_at),
-                "meaning": "Reviewed calculations and compliance with the protocol",
+                "meaning": "Supervisor reviewed the calculations and compliance with the protocol",
             },
             {
                 "role": "QA approver",
@@ -285,6 +285,7 @@ class ExportService:
         test_code: str,
         principal: Principal,
         ip: str | None = None,
+        stage: str = "OFFICIAL",
     ) -> tuple[bytes, str]:
         """A certificate for a single test of an approved run.
 
@@ -293,12 +294,27 @@ class ExportService:
         frozen run with a recorded fingerprint. Only a PASS test is certified: a
         certificate attests conformity, and a FAIL verdict is a deviation, not a
         certificate.
+
+        ``stage="PROVISIONAL"`` produces the *draft* of the same document for a run that
+        has been executed but not yet reviewed and approved. It exists because the
+        laboratory has to see where a result stands in the approval cycle — "Pending
+        Review" or "Pending QA Approval", with the names and dates that are already known
+        — without that sheet ever passing for a certificate. It is watermarked across the
+        page, its footer says DRAFT, and it is audited under its own action, so a draft in
+        a folder can never be mistaken for the signed record.
         """
+        provisional = str(stage).upper() == "PROVISIONAL"
         principal.require("reports.export")
         data = await self._load(run_id, principal)
         run: CalibrationRun = data["run"]
 
-        if not run.is_locked or run.qa_approved_at is None or not run.certificate_hash:
+        if provisional:
+            if run.overall_status == "INCOMPLETE":
+                raise ConflictError(
+                    message_ar="لا يمكن إصدار مسودة شهادة لتشغيل غير منفّذ بعد",
+                    message_en="A provisional document cannot be issued for an unexecuted run",
+                )
+        elif not run.is_locked or run.qa_approved_at is None or not run.certificate_hash:
             raise ConflictError(
                 message_ar=(
                     "لا يمكن إصدار شهادة اختبار قبل الاعتماد النهائي من ضمان الجودة — "
@@ -313,7 +329,7 @@ class ExportService:
                 message_ar=f"الاختبار {test_code} غير موجود في هذا التشغيل",
                 message_en=f"Test {test_code} is not part of this run",
             )
-        if result.status != "PASS":
+        if result.status != "PASS" and not provisional:
             raise ConflictError(
                 message_ar=(
                     f"لا تُصدر شهادة للاختبار {test_code} حالته {result.status} — "
@@ -369,11 +385,15 @@ class ExportService:
         }
         payload["readings"] = readings
         payload["metrics"] = metrics_payload
+        payload["stage"] = "PROVISIONAL" if provisional else "OFFICIAL"
+        payload["approval"] = self._approval_state(data)
         # the renderer resolves the page total itself (two passes) so the footer is right
         pdf = await asyncio.to_thread(build_test_certificate_pdf, payload)
 
         await AuditService(self.session).record(
-            action="TEST_CERTIFICATE_EXPORTED",
+            action=(
+                "TEST_CERTIFICATE_PROVISIONAL_EXPORTED" if provisional else "TEST_CERTIFICATE_EXPORTED"
+            ),
             entity_type="calibration_test_result",
             entity_id=result.id,
             actor_label=principal.username,
@@ -385,12 +405,49 @@ class ExportService:
                 "test_code": test_code,
                 "run_code": run.execution_code,
                 "bytes": len(pdf),
+                "stage": payload["stage"],
             },
-            reason=f"إصدار شهادة معايرة للاختبار {test_code}",
+            reason=(
+                f"إصدار مسودة شهادة للاختبار {test_code}"
+                if provisional
+                else f"إصدار شهادة معايرة للاختبار {test_code}"
+            ),
             ip_address=ip,
         )
-        filename = f"{run.execution_code}-{test_code}-certificate.pdf"
+        suffix = "draft" if provisional else "certificate"
+        filename = f"{run.execution_code}-{test_code}-{suffix}.pdf"
         return pdf, filename
+
+    @staticmethod
+    def _approval_state(data: dict[str, Any]) -> dict[str, Any]:
+        """Who has signed, who has not — the two rows the certificate must always print.
+
+        Derived from the stored reviewer/approver columns rather than from a separate
+        status field, so there is one truth: a name and a timestamp are either on the run
+        or they are not.
+        """
+        run: CalibrationRun = data["run"]
+        users: dict[uuid.UUID, Any] = data.get("users") or {}
+        analyst = users.get(run.analyst_id) if run.analyst_id in users else None
+        reviewer = users.get(run.reviewer_id) if run.reviewer_id in users else None
+        approver = users.get(run.qa_approver_id) if run.qa_approver_id in users else None
+        return {
+            "analyst": {
+                "name": analyst.username if analyst else "—",
+                "at": ExportService._iso(run.started_at),
+                "status": "Executed",
+            },
+            "supervisor": {
+                "name": reviewer.username if reviewer else "—",
+                "at": ExportService._iso(run.reviewed_at),
+                "status": "Approved" if run.reviewed_at else "Pending Review",
+            },
+            "qa": {
+                "name": approver.username if approver else "—",
+                "at": ExportService._iso(run.qa_approved_at),
+                "status": "Approved" if run.qa_approved_at else "Pending QA Approval",
+            },
+        }
 
     async def run_xlsx(
         self, *, run_id: uuid.UUID, principal: Principal, ip: str | None = None

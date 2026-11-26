@@ -196,7 +196,7 @@ describe('full run engine', () => {
   });
 
   it('reports INCOMPLETE when required raw data is missing', () => {
-    const inputs = { ...goodInputs, T02: { set_flow: [0.5, 1, 2] } };
+    const inputs = { ...goodInputs, T02: { flow_p1000: [1.0, 1.0, 1.0] } };
     const res = runCalibration(inputs, { policySource: 'AUTHORITY_LIMIT' });
     expect(res.perTest['T02'].status).toBe('INCOMPLETE');
   });

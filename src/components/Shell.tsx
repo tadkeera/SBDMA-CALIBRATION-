@@ -22,6 +22,7 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
+import { Gauge } from 'lucide-react';
 import { PasswordChangeGate } from './PasswordChangeGate';
 import { MfaEnrolment } from './MfaEnrolment';
 import { ROLE_LABELS } from '@/core/types';
@@ -33,6 +34,13 @@ import { api, ApiError } from '@/core/api/client';
 const NAV = [
   { href: '/', ar: 'لوحة المؤشرات', en: 'Dashboard', icon: LayoutDashboard, perm: 'instruments.view' as const },
   { href: '/lab', ar: 'لوحة المختبر والمعايرة', en: 'Laboratory', icon: Beaker, perm: 'calibration.run' as const },
+  {
+    href: '/lab/flow-rate',
+    ar: 'اختبار معدل التدفق',
+    en: 'Flow Rate (T02)',
+    icon: Gauge,
+    perm: 'calibration.run' as const,
+  },
   { href: '/qa', ar: 'ضمان الجودة والاعتماد', en: 'Quality Assurance', icon: ShieldCheck, perm: 'calibration.review' as const },
   { href: '/engineering', ar: 'الصيانة والهندسة', en: 'Engineering', icon: Wrench, perm: 'maintenance.manage' as const },
   { href: '/control', ar: 'الإدارة المركزية', en: 'Central Control', icon: Cog, perm: 'settings.manage' as const },

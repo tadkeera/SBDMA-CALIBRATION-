@@ -240,7 +240,7 @@ REVOKE ALL ON ALL SEQUENCES IN SCHEMA public FROM anon, authenticated;
 
 ### بيانات الدخول
 تُسلَّم للحساب المسؤول خارج المستودع (لا أسرار في Git). الأدوار
-`SUPER_ADMIN` و`QA_APPROVER` و`TECHNICAL_REVIEWER` تُلزِم التحقق بخطوتين عند أول
+`SUPER_ADMIN` و`QA_APPROVER` و`SUPERVISOR` تُلزِم التحقق بخطوتين عند أول
 دخول — وهذا سلوك Part 11 المقصود، لا عطل: يُمسح رمز QR بتطبيق مصادقة ثم يُدخل الرمز.
 
 ### ما لا يعمل على هذه النسخة (بصراحة)

@@ -63,12 +63,12 @@ PROCEDURES_EN: dict[str, tuple[str, ...]] = {
         "Attach the validation-log printout to the run record; the transcribed values must be traceable to the instrument's own log, never re-keyed from memory.",
     ),
     "T02": (
-        "Set the pump to each specified flow rate (1.0, 1.5 and 2.0 mL/min) and allow the system to equilibrate for at least 10 minutes at each setting with water as the mobile phase.",
-        "Weigh a clean, dry 10 mL volumetric flask to 0.1 mg on a calibrated analytical balance and record the mass W1.",
-        "Start the pump at the set flow rate, simultaneously start a calibrated stopwatch, and collect the eluate directly into the flask for the measured collection time.",
-        "Stop the pump and the timer together, then re-weigh the flask to 0.1 mg and record W2. Convert the collected mass to volume using the water density at the recorded ambient temperature.",
-        "Repeat steps 2 to 4 for each flow rate, entering the set flow, the collected volume and the measured time for every replicate.",
-        "Calculate the actual flow and the percentage error for each setting; the largest absolute error across the three settings is the reported result.",
+        "Set the pump to 1.000 mL/min with degassed HPLC-grade water as the mobile phase and allow the pressure to stabilise for at least 10 minutes.",
+        "For each of the ten replicates, weigh a clean, dry 10 mL volumetric flask to 0.1 mg (W1), start the pump and a calibrated stopwatch together, and collect the eluate for the timed interval.",
+        "Stop the pump and the timer together, re-weigh the flask (W2), convert the collected mass to volume with the water density at the recorded ambient temperature, and compute the delivered flow for that replicate.",
+        "Enter the ten replicate flows (Runs 1–10) in mL/min for the 1.000 mL/min set point; the page recalculates the mean, SD, %RSD and %accuracy on every keystroke.",
+        "Repeat steps 1 to 4 for the 1.500 mL/min and 2.000 mL/min set points, ten replicates each, and enter them in the corresponding row of the grid.",
+        "Press Run Calibration to render the accuracy and control charts, then Save. The reported result is the worst absolute %accuracy and the worst %RSD across the three set points; acceptance is ±2.0 % accuracy and %RSD ≤ 1.0 %.",
     ),
     "T03": (
         "Equilibrate the pump at 1.0 mL/min with degassed water for 15 minutes and confirm a stable baseline pressure.",
@@ -246,19 +246,36 @@ MANUAL: dict[str, ManualEntry] = {
                 "Flow-rate accuracy is the gravimetric determination of the volume the pump actually delivers against "
                 "the volume it is programmed to deliver. Because retention time, resolution and quantitative injection "
                 "volume all depend on it, a pump that is 3 % high will silently shift every chromatogram and bias "
-                "every assay derived from peak area. The laboratory adopted a three-point protocol (1.0, 1.5 and "
-                "2.0 mL/min) with a ±1.0 % acceptance limit, which is the tighter of the manufacturer and "
-                "integrity-guide criteria."
+                "every assay derived from peak area. The laboratory adopted a three-point protocol (1.000, 1.500 and "
+                "2.000 mL/min) with ten independent replicates at each set point, because a single determination "
+                "cannot separate a genuine offset from random weighing noise: the mean carries the accuracy verdict, "
+                "while the %RSD across the ten replicates carries the precision verdict. Acceptance is ±2.0 % "
+                "accuracy (98.0–102.0 %) and %RSD ≤ 1.0 % at every set point."
             ),
             ideal_readings=(
-                IdealReading("set_flow", "1.00 / 1.50 / 2.00", "Three validated flow settings, mL/min"),
-                IdealReading("collected_vol", "9.98 / 9.96 / 9.94", "Gravimetric volume converted with water density"),
-                IdealReading("actual_time", "598.8 / 398.4 / 298.2", "Collection time measured with a calibrated stopwatch"),
+                IdealReading("flow_p1000", "1.0000 mL/min × 10", "Ten replicates at the 1.000 mL/min set point; spread within ±0.005"),
+                IdealReading("flow_p1500", "1.5000 mL/min × 10", "Ten replicates at the 1.500 mL/min set point; spread within ±0.007"),
+                IdealReading("flow_p2000", "2.0000 mL/min × 10", "Ten replicates at the 2.000 mL/min set point; spread within ±0.010"),
             ),
             evaluation_en=(
-                ("actual_flow", "V_actual = (V_collected × 60) / t, with t in seconds and V in mL, giving mL/min."),
-                ("pct_error", "%Error = ((V_actual − V_set) / V_set) × 100 for each flow setting."),
-                ("max_abs_error", "The largest absolute %Error across the three settings is compared with the adopted limit."),
+                (
+                    "mean_p1000 / mean_p1500 / mean_p2000",
+                    "Mean flow of the ten replicates at each set point, mL/min — the value accuracy is judged on.",
+                ),
+                (
+                    "sd_p1000 / sd_p1500 / sd_p2000",
+                    "Sample standard deviation of the ten replicates (n − 1), mL/min.",
+                ),
+                (
+                    "rsd_p1000 / rsd_p1500 / rsd_p2000",
+                    "%RSD = (SD / mean) × 100 across the ten replicates of one set point.",
+                ),
+                (
+                    "acc_p1000 / acc_p1500 / acc_p2000",
+                    "%Accuracy = ((mean − nominal) / nominal) × 100 with the nominal 1.000, 1.500 or 2.000 mL/min.",
+                ),
+                ("max_abs_error", "The worst absolute %Accuracy of the three set points is compared with ±2.0 %."),
+                ("max_rsd", "The worst %RSD of the three set points is compared with the ≤ 1.0 % limit."),
             ),
             references=(
                 "USP <1058> Analytical Instrument Qualification — operational qualification of solvent delivery systems.",
@@ -266,8 +283,9 @@ MANUAL: dict[str, ManualEntry] = {
                 "ISO/IEC 17025:2017 §7.7 — ensuring the validity of results by performance checks.",
             ),
             limit_notes=(
-                "Where sources conflict the stricter criterion governs: manufacturer ±1.0 %, integrity guide ±2.0 %, "
-                "iOQ protocol ±2.5 %. The laboratory adopted ±1.0 % (AUTHORITY_LIMIT).",
+                "The v2.1.0 authority limit is ±2.0 % accuracy (98.0–102.0 %) with %RSD ≤ 1.0 % across the ten "
+                "replicates, adopted on the board's request. The manufacturer ±1.0 % and the iOQ ±2.5 % rows remain "
+                "in the limit table and can be selected as the run's limit-source policy; nothing was deleted.",
             ),
         ),
     "T03": ManualEntry(

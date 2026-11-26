@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import {
   AlertTriangle,
@@ -8,6 +9,7 @@ import {
   ClipboardList,
   Download,
   FlaskConical,
+  Gauge,
   Info,
   Play,
   RotateCcw,
@@ -570,7 +572,18 @@ export default function LabPage() {
 
       <div className="grid gap-3 xl:grid-cols-[300px_1fr]">
         {/* test navigator */}
-        <Card title={t('اختبارات البروتوكول', 'Protocol tests')} subtitle={t(`${scopedTests.length} اختباراً في النطاق`, `${scopedTests.length} tests in scope`)} dense>
+        <Card
+          title={t('اختبارات البروتوكول', 'Protocol tests')}
+          subtitle={t(`${scopedTests.length} اختباراً في النطاق`, `${scopedTests.length} tests in scope`)}
+          actions={
+            // T02 is thirty readings in three rows with live statistics and its own approval
+            // trail; it does not fit the one-card-per-test shape, so it has a page of its own.
+            <Link href="/lab/flow-rate" className="btn btn-ghost px-2 py-1 text-[10.5px]">
+              <Gauge size={12} /> {t('صفحة معدل التدفق', 'Flow Rate page')}
+            </Link>
+          }
+          dense
+        >
           <ul className="max-h-[520px] overflow-y-auto">
             {TESTS.filter((test) => !disabledTests.includes(test.code)).map((test) => {
               const inScope = scopedTests.some((x) => x.code === test.code);
@@ -983,7 +996,7 @@ export default function LabPage() {
             <div className="flex items-start gap-2 rounded-lg px-3 py-2 text-[11px]" style={{ background: 'rgba(29,78,216,.08)', color: 'var(--review)' }}>
               <ClipboardList size={13} className="mt-0.5 shrink-0" />
               {t(
-                'فصل المهام: لا يجوز أن يكون المحلل هو المراجع الفني أو معتمد ضمان الجودة لنفس التشغيل.',
+                'فصل المهام: لا يجوز أن يكون المحلل هو المشرف المراجع أو معتمد ضمان الجودة لنفس التشغيل.',
                 'Segregation of duties: the analyst cannot also be the reviewer or QA approver of the same run.',
               )}
             </div>

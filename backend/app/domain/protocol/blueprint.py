@@ -1,12 +1,16 @@
-"""HPLC SHIMADZU LC 2050 C PROTOCOL v2.0.0 — authoritative unified protocol blueprint.
+"""HPLC SHIMADZU LC 2050 C PROTOCOL v2.1.0 — authoritative unified protocol blueprint.
 
 Single source of truth for seeding and execution. Combines:
   - Shimadzu i-Series LC-2050C (UV) Integrity Guide 228-93518D (Ch.2 & Ch.4 iOQ)
   - USA USP <621>, <857>, and <1058> chromatographic & photometric qualification tests
-  - Custom Flow Rate Accuracy configuration: 1.0, 1.5, 2.0 mL/min, 10.0 mL flask, ±1.0% limit
+  - Flow Rate Accuracy configuration: 1.0, 1.5, 2.0 mL/min, ten measured replicates per
+    set point, ±2.0 % accuracy (98.0–102.0 %) and %RSD ≤ 1.0 % (v2.1.0, on request)
 
 Conflict resolution policy:
-  - Flow Rate Accuracy (T02): 1.0, 1.5, 2.0 mL/min, 10.0 mL volume, ±1.0% limit.
+  - Flow Rate Accuracy (T02): 1.0, 1.5, 2.0 mL/min × 10 replicates; the adopted
+    AUTHORITY_LIMIT is ±2.0 % accuracy and %RSD ≤ 1.0 %. The stricter manufacturer
+    ±1.0 % and the iOQ ±2.5 % rows stay in the table and remain selectable as the
+    run's limit-source policy — they were not deleted, only out-ranked.
   - All other parameters: where references conflict, the stricter USA USP or
     Shimadzu Integrity Guide (Ch.2 / iOQ) operational limit is adopted as AUTHORITY_LIMIT.
   - All limit source_type values strictly conform to the database Enum:
@@ -20,7 +24,7 @@ from decimal import Decimal
 from typing import Any, Literal
 
 PROTOCOL_CODE = "HPLC-SHIMADZU-LC2050C-PROTOCOL"
-PROTOCOL_VERSION = "2.0.0"
+PROTOCOL_VERSION = "2.1.0"
 PROTOCOL_TITLE_AR = "بروتوكول معايرة وتحقق أداء جهاز HPLC SHIMADZU LC 2050 C الموحد"
 PROTOCOL_TITLE_EN = "HPLC SHIMADZU LC 2050 C PROTOCOL"
 
@@ -160,16 +164,51 @@ TESTS: tuple[TestSpec, ...] = (
             "حد القبول المعتمد: يجب ألا يتجاوز الخطأ ±1.0% عند أي سرعة.",
         ),
         fields=(
-            FieldSpec("set_flow", "معدلات التدفق المضبوطة", "Set flow rates", "series", "mL/min", length=3, hint_ar="القيم المعتمدة: 1.0, 1.5, 2.0"),
-            FieldSpec("collected_vol", "الحجم المجمع", "Collected volume", "series", "mL", length=3, hint_ar="الحجم القياسي: 10.0, 10.0, 10.0"),
-            FieldSpec("actual_time", "الزمن المقاس بالثواني", "Measured time (s)", "series", "s", length=3, hint_ar="الزمن اللازم لملء 10.0 mL لكل سرعة"),
+            FieldSpec(
+                "flow_p1000",
+                "قراءات معدل التدفق عند 1.000 mL/min",
+                "Flow readings @ 1.000 mL/min",
+                "series",
+                "mL/min",
+                length=10,
+                hint_ar="عشر قراءات مستقلة (Runs 1–10) — القيمة المضبوطة 1.000 mL/min، المدى المقبول 0.980–1.020",
+            ),
+            FieldSpec(
+                "flow_p1500",
+                "قراءات معدل التدفق عند 1.500 mL/min",
+                "Flow readings @ 1.500 mL/min",
+                "series",
+                "mL/min",
+                length=10,
+                hint_ar="عشر قراءات مستقلة (Runs 1–10) — القيمة المضبوطة 1.500 mL/min، المدى المقبول 1.470–1.530",
+            ),
+            FieldSpec(
+                "flow_p2000",
+                "قراءات معدل التدفق عند 2.000 mL/min",
+                "Flow readings @ 2.000 mL/min",
+                "series",
+                "mL/min",
+                length=10,
+                hint_ar="عشر قراءات مستقلة (Runs 1–10) — القيمة المضبوطة 2.000 mL/min، المدى المقبول 1.960–2.040",
+            ),
         ),
         formulas=(
-            FormulaSpec("actual_flow", "(collected_vol * 60) / actual_time", "التدفق الفعلي = (الحجم × 60) ÷ الزمن", "Actual flow = (volume × 60) / time", 4),
-            FormulaSpec("pct_error", "((actual_flow - set_flow) / set_flow) * 100", "نسبة الخطأ المئوية", "%Error", 3),
-            FormulaSpec("max_abs_error", "max(abs(pct_error))", "أقصى خطأ مطلق", "Max absolute error", 3),
+            FormulaSpec("mean_p1000", "mean(flow_p1000)", "متوسط قراءات 1.000 mL/min", "Mean @ 1.000 mL/min", 4),
+            FormulaSpec("sd_p1000", "sd(flow_p1000)", "الانحراف المعياري عند 1.000 mL/min", "SD @ 1.000 mL/min", 5),
+            FormulaSpec("rsd_p1000", "rsd(flow_p1000)", "معامل الاختلاف عند 1.000 mL/min", "%RSD @ 1.000 mL/min", 3),
+            FormulaSpec("acc_p1000", "pct_error(mean_p1000, 1.0)", "دقة 1.000 mL/min", "%Accuracy @ 1.000 mL/min", 3),
+            FormulaSpec("mean_p1500", "mean(flow_p1500)", "متوسط قراءات 1.500 mL/min", "Mean @ 1.500 mL/min", 4),
+            FormulaSpec("sd_p1500", "sd(flow_p1500)", "الانحراف المعياري عند 1.500 mL/min", "SD @ 1.500 mL/min", 5),
+            FormulaSpec("rsd_p1500", "rsd(flow_p1500)", "معامل الاختلاف عند 1.500 mL/min", "%RSD @ 1.500 mL/min", 3),
+            FormulaSpec("acc_p1500", "pct_error(mean_p1500, 1.5)", "دقة 1.500 mL/min", "%Accuracy @ 1.500 mL/min", 3),
+            FormulaSpec("mean_p2000", "mean(flow_p2000)", "متوسط قراءات 2.000 mL/min", "Mean @ 2.000 mL/min", 4),
+            FormulaSpec("sd_p2000", "sd(flow_p2000)", "الانحراف المعياري عند 2.000 mL/min", "SD @ 2.000 mL/min", 5),
+            FormulaSpec("rsd_p2000", "rsd(flow_p2000)", "معامل الاختلاف عند 2.000 mL/min", "%RSD @ 2.000 mL/min", 3),
+            FormulaSpec("acc_p2000", "pct_error(mean_p2000, 2.0)", "دقة 2.000 mL/min", "%Accuracy @ 2.000 mL/min", 3),
+            FormulaSpec("max_abs_error", "max(abs(acc_p1000), abs(acc_p1500), abs(acc_p2000))", "أقصى خطأ دقة مطلق", "Worst absolute %accuracy", 3),
+            FormulaSpec("max_rsd", "max(rsd_p1000, rsd_p1500, rsd_p2000)", "أقصى معامل اختلاف", "Worst %RSD", 3),
         ),
-        metrics=("max_abs_error",),
+        metrics=("max_abs_error", "max_rsd"),
         chart="flow",
     ),
     # ── T03: Pressure Pulsation & Limiter ───────────────────────────────────
@@ -718,7 +757,16 @@ LIMITS: tuple[LimitSpec, ...] = (
     _L("T02", "max_abs_error", "INTEGRITY_GUIDE_CH2", "lte", None, 2.0, "%", A, "حد شيمادزو Ch.2 المرجعي (±2.0%)"),
     _L("T02", "max_abs_error", "IOQ_PROTOCOL_CH4", "lte", None, 2.5, "%", A, "حد iOQ الوزني (±2.5%)"),
     _L("T02", "max_abs_error", "MANUFACTURER_SPEC", "lte", None, 1.0, "%", A, "مواصفة المصنع (±1.0%)"),
-    _L("T02", "max_abs_error", "AUTHORITY_LIMIT", "lte", None, 1.0, "%", A, "حد معتمد مخصص: 1.0, 1.5, 2.0 mL/min بحجم 10 mL وحد ±1.0%"),
+    _L(
+        "T02", "max_abs_error", "AUTHORITY_LIMIT", "lte", None, 2.0, "%", A,
+        "الحد المعتمد (v2.1.0): الدقة ±2.0% أي 98.0–102.0% عند 1.000 و1.500 و2.000 mL/min — "
+        "طلب الهيئة؛ صف المصنع ±1.0% باقٍ وقابل للاختيار كسياسة تشغيل",
+    ),
+    _L(
+        "T02", "max_rsd", "AUTHORITY_LIMIT", "lte", None, 1.0, "%", A,
+        "الحد المعتمد (v2.1.0): %RSD ≤ 1.0% عبر عشر قراءات لكل نقطة ضبط",
+    ),
+    _L("T02", "max_rsd", "SOP_LIMIT", "lte", None, 1.0, "%", A, "إجراء التشغيل القياسي: %RSD ≤ 1.0%"),
 
     # T03 — Pressure Pulsation
     _L("T03", "pulsation", "INTEGRITY_GUIDE_CH2", "lte", None, 0.2, "MPa", A),

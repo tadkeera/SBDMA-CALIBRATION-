@@ -3,7 +3,7 @@
 `src/core/protocol.ts` is read as source text and structurally compared against
 `app/domain/protocol/blueprint.py`. Running the TypeScript engine under Node is
 not required: the two artefacts must agree on test codes, field keys, formula
-expressions and every one of the 93 limits.
+expressions and every one of the 95 limits.
 
 If this test fails, the frontend and the backend would score the same readings
 differently — which is the single most dangerous defect this system can ship.
@@ -67,7 +67,7 @@ def test_limit_count_and_sources(ts_source: str) -> None:
         r"\s*([^,]+),\s*([^,]+),\s*'([^']*)'\s*,\s*([AC])",
         ts_source,
     )
-    assert len(calls) == len(LIMITS) == 93, f"TS limits {len(calls)} vs Python {len(LIMITS)}"
+    assert len(calls) == len(LIMITS) == 95, f"TS limits {len(calls)} vs Python {len(LIMITS)}"
 
     ts_set = {(t, m, s) for t, m, s, *_ in calls}
     py_set = {(l.test_code, l.metric_key, l.source_type) for l in LIMITS}

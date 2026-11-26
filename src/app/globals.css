@@ -39,6 +39,31 @@ body {
   background: var(--surface-2);
   color: var(--text);
   font-size: 14px;
+  /* English keeps the system sans it had before Cairo was introduced. */
+  font-family: var(--font-en), system-ui, 'Segoe UI', Tahoma, Arial, sans-serif;
+}
+
+:root {
+  --font-en: ui-sans-serif, system-ui, 'Segoe UI', Tahoma, Arial;
+}
+
+/*
+ * When the interface is Arabic the whole system reads in Cairo — screens, tables, modals,
+ * buttons and inputs alike. The switch is on `html[lang]` because that attribute is set by
+ * AppProvider whenever the operator toggles the language, so a single rule owns the
+ * decision and no component has to remember to apply a class.
+ */
+html[lang='ar'],
+html[lang='ar'] body {
+  font-family: var(--font-cairo), 'Segoe UI', Tahoma, Arial, sans-serif;
+}
+
+/* Numbers, codes and paths stay in a face where digits cannot be mistaken for letters. */
+html[lang='ar'] code,
+html[lang='ar'] .mono,
+html[lang='ar'] .tabular {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
 * {

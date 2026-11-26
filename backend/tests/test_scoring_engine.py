@@ -37,7 +37,7 @@ def run(inputs=None, source="AUTHORITY_LIMIT"):
 
 
 def test_twenty_tests_present():
-    """Protocol v2.0.0 spans 20 tests; the numbering must be gapless."""
+    """Protocol v2.1.0 spans 20 tests; the numbering must be gapless."""
     assert len(TESTS) == 20
     assert [t.code for t in TESTS] == [f"T{i:02d}" for i in range(1, 21)]
 
@@ -53,7 +53,7 @@ def test_every_metric_has_authority_limit():
 
 
 def test_the_looser_ioq_carryover_limit_is_conflicted():
-    """v2.0.0 keeps exactly one conflict: the iOQ carryover limit 10× the adopted one."""
+    """v2.1.0 keeps exactly one conflict: the iOQ carryover limit 10× the adopted one."""
     bad = [lim for lim in LIMITS if lim.approval_status == "CONFLICT_REQUIRES_QA"]
     assert [(lim.test_code, lim.metric_key, lim.source_type) for lim in bad] == [
         ("T12", "carryover_pct", "IOQ_PROTOCOL_CH4")
@@ -65,7 +65,7 @@ def test_the_looser_ioq_carryover_limit_is_conflicted():
 
 
 def test_limit_count_is_stable():
-    assert len(LIMITS) == 93
+    assert len(LIMITS) == 95
 
 
 # ────────────────────────────── governance gate ───────────────────────────── #
@@ -126,7 +126,7 @@ def test_drift_oos_fails():
 
 
 def test_missing_required_field_is_incomplete():
-    inputs = {**GOOD_INPUTS, "T02": {"set_flow": [0.5, 1, 2]}}
+    inputs = {**GOOD_INPUTS, "T02": {"flow_p1000": [1.0, 1.0, 1.0]}}
     outcome = run(inputs)
     assert outcome.by_code["T02"].status == INCOMPLETE
 
@@ -139,11 +139,17 @@ def test_leak_sensor_failure_fails_run():
 
 
 def test_flow_rate_value_matches_report_method():
+    """The reported result is the worst accuracy and the worst %RSD of the three points."""
     outcome = run()
     t02 = outcome.by_code["T02"]
     err = t02.outputs["max_abs_error"]
-    assert isinstance(err, Decimal)
+    rsd = t02.outputs["max_rsd"]
+    assert isinstance(err, Decimal) and isinstance(rsd, Decimal)
     assert err < D("2.0")
+    assert rsd < D("1.0")
+    # the per-set-point means are reported too, so a certificate can print the three rows
+    assert t02.outputs["mean_p1000"].quantize(D("0.01")) == D("1.00")
+    assert t02.outputs["mean_p2000"].quantize(D("0.01")) == D("2.00")
 
 
 def test_carryover_is_computed_not_rounded():

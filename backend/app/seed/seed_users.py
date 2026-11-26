@@ -30,10 +30,10 @@ SEED_USERS = (
     ("admin", "admin@sbdma.gov.ye", "مدير النظام", "System Administrator", "QA", "SUPER_ADMIN", "SBDMA_ADMIN_PASSWORD"),
     ("qa.manager", "qa.manager@sbdma.gov.ye", "مدير ضمان الجودة", "QA Manager", "QA", "QA_APPROVER", "SBDMA_QA_MANAGER_PASSWORD"),
     ("qa.officer", "qa.officer@sbdma.gov.ye", "مسؤول ضمان الجودة", "QA Officer", "QA", "QA_APPROVER", "SBDMA_QA_OFFICER_PASSWORD"),
-    ("supervisor.phys", "supervisor.phys@sbdma.gov.ye", "مشرف مختبر الفيزياء", "Physics Lab Supervisor", "PHYS", "TECHNICAL_REVIEWER", "SBDMA_SUPERVISOR_PASSWORD"),
+    ("supervisor.phys", "supervisor.phys@sbdma.gov.ye", "مشرف مختبر الفيزياء", "Physics Lab Supervisor", "PHYS", "SUPERVISOR", "SBDMA_SUPERVISOR_PASSWORD"),
     ("analyst.phys", "analyst.phys@sbdma.gov.ye", "محلل مختبر الفيزياء", "Physics Lab Analyst", "PHYS", "ANALYST", "SBDMA_ANALYST_PASSWORD"),
     ("analyst.chem", "analyst.chem@sbdma.gov.ye", "محلل مختبر الكيمياء", "Chemistry Lab Analyst", "CHEM", "ANALYST", "SBDMA_ANALYST2_PASSWORD"),
-    ("reviewer.phys", "reviewer.phys@sbdma.gov.ye", "المراجع الفني — الفيزياء", "Technical Reviewer — Physics", "PHYS", "TECHNICAL_REVIEWER", "SBDMA_REVIEWER_PASSWORD"),
+    ("reviewer.phys", "reviewer.phys@sbdma.gov.ye", "مشرف المختبر — الفيزياء", "Lab Supervisor — Physics", "PHYS", "SUPERVISOR", "SBDMA_REVIEWER_PASSWORD"),
     ("technician", "technician@sbdma.gov.ye", "فني صيانة", "Maintenance Technician", "PHYS", "ENGINEERING_SERVICE", "SBDMA_TECHNICIAN_PASSWORD"),
     ("viewer", "viewer@sbdma.gov.ye", "مطالع", "Read-only Viewer", "QA", "VIEWER", "SBDMA_VIEWER_PASSWORD"),
 )

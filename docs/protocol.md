@@ -1,11 +1,11 @@
-# البروتوكول المعتمد — HPLC-SHIMADZU-LC2050C-PROTOCOL v2.0.0
+# البروتوكول المعتمد — HPLC-SHIMADZU-LC2050C-PROTOCOL v2.1.0
 
 **بروتوكول معايرة وتحقق أداء جهاز HPLC SHIMADZU LC 2050 C الموحد**  
 *HPLC SHIMADZU LC 2050 C PROTOCOL*
 
 الجهاز: Shimadzu i-Series LC-2050C (UV Detector + Sample Cooler) · رقم القطعة `S228-65821-58` · الدورية: كل 180 يوماً أو بعد أي صيانة كبرى.
 
-**20 اختباراً · 93 حد قبول · 77 حقلاً · 75 معادلة · 7 صفاً في مصفوفة إعادة الاختبار.**
+**20 اختباراً · 95 حد قبول · 77 حقلاً · 86 معادلة · 7 صفاً في مصفوفة إعادة الاختبار.**
 
 > هذا الملف **مُولَّد آلياً** من `backend/app/domain/protocol/blueprint.py` بواسطة `scripts/export_protocol_doc.py`. لا يُحرَّر بيداً: أي تعديل يدوي يُفشل `--check` في الاختبارات، لأن وثيقة تحدِّث حدوداً لا يطبّقها المحرك هي أسوأ من وثيقة قديمة.
 
@@ -16,7 +16,7 @@
 | # | الاختبار | الوحدة | المعايير | حقول | معادلات | مقاييس | حدود |
 |---|---|---|---|---|---|---|---|
 | T01 | التحقق التلقائي الشامل (Auto Validation) | `AUTO` | Shimadzu Integrity Guide Ch.2 — Auto Validation | 9 | 8 | 8 | 16 |
-| T02 | دقة معدل التدفق للمضخة (Flow Rate Accuracy) | `PUMP` | Custom Protocol (1.0/1.5/2.0 mL/min, 10 mL, ±1.0%) & USP <1058> OQ | 3 | 3 | 1 | 4 |
+| T02 | دقة معدل التدفق للمضخة (Flow Rate Accuracy) | `PUMP` | Custom Protocol (1.0/1.5/2.0 mL/min, 10 mL, ±1.0%) & USP <1058> OQ | 3 | 14 | 2 | 6 |
 | T03 | ثبات الضغط ومحددات الضغط (Pressure Pulsation & Limiter) | `PUMP` | Shimadzu Integrity Guide Ch.2 — Pump | 3 | 1 | 1 | 2 |
 | T04 | دقة صمام التدرج اللوني (Gradient Proportioning Valve — GPV) | `PUMP` | Shimadzu Integrity Guide Ch.2/iOQ & USP <1058> OQ | 6 | 8 | 1 | 4 |
 | T05 | دقة حجم الحقن الوزنية (Injection Volume Accuracy — Gravimetric) | `AUTOSAMPLER` | Shimadzu Integrity Guide Ch.2 (50 µL × 10, ±1.3%) | 5 | 3 | 1 | 4 |
@@ -110,23 +110,35 @@
 
 | المفتاح | الوصف | النوع | الوحدة | الطول | إلزامي |
 |---|---|---|---|---|---|
-| `set_flow` | معدلات التدفق المضبوطة | `series` | mL/min | 3 | نعم |
-| `collected_vol` | الحجم المجمع | `series` | mL | 3 | نعم |
-| `actual_time` | الزمن المقاس بالثواني | `series` | s | 3 | نعم |
+| `flow_p1000` | قراءات معدل التدفق عند 1.000 mL/min | `series` | mL/min | 10 | نعم |
+| `flow_p1500` | قراءات معدل التدفق عند 1.500 mL/min | `series` | mL/min | 10 | نعم |
+| `flow_p2000` | قراءات معدل التدفق عند 2.000 mL/min | `series` | mL/min | 10 | نعم |
 
 **المعادلات المنفَّذة (AST مُتحقق منه، بلا `eval`):**
 
 | المفتاح | التعبير | الوصف |
 |---|---|---|
-| `actual_flow` | `(collected_vol * 60) / actual_time` | التدفق الفعلي = (الحجم × 60) ÷ الزمن |
-| `pct_error` | `((actual_flow - set_flow) / set_flow) * 100` | نسبة الخطأ المئوية |
-| `max_abs_error` | `max(abs(pct_error))` | أقصى خطأ مطلق |
+| `mean_p1000` | `mean(flow_p1000)` | متوسط قراءات 1.000 mL/min |
+| `sd_p1000` | `sd(flow_p1000)` | الانحراف المعياري عند 1.000 mL/min |
+| `rsd_p1000` | `rsd(flow_p1000)` | معامل الاختلاف عند 1.000 mL/min |
+| `acc_p1000` | `pct_error(mean_p1000, 1.0)` | دقة 1.000 mL/min |
+| `mean_p1500` | `mean(flow_p1500)` | متوسط قراءات 1.500 mL/min |
+| `sd_p1500` | `sd(flow_p1500)` | الانحراف المعياري عند 1.500 mL/min |
+| `rsd_p1500` | `rsd(flow_p1500)` | معامل الاختلاف عند 1.500 mL/min |
+| `acc_p1500` | `pct_error(mean_p1500, 1.5)` | دقة 1.500 mL/min |
+| `mean_p2000` | `mean(flow_p2000)` | متوسط قراءات 2.000 mL/min |
+| `sd_p2000` | `sd(flow_p2000)` | الانحراف المعياري عند 2.000 mL/min |
+| `rsd_p2000` | `rsd(flow_p2000)` | معامل الاختلاف عند 2.000 mL/min |
+| `acc_p2000` | `pct_error(mean_p2000, 2.0)` | دقة 2.000 mL/min |
+| `max_abs_error` | `max(abs(acc_p1000), abs(acc_p1500), abs(acc_p2000))` | أقصى خطأ دقة مطلق |
+| `max_rsd` | `max(rsd_p1000, rsd_p1500, rsd_p2000)` | أقصى معامل اختلاف |
 
 **المقاييس وحدودها:**
 
 | المقياس | الحد المعتمد | المصادر الأخرى | الحالة |
 |---|---|---|---|
-| `max_abs_error` | ≤ 1 % | دليل سلامة الأجهزة — الفصل 2: ≤ 2 % · بروتوكول iOQ — الفصل 4: ≤ 2.5 % · مواصفات المصنع: ≤ 1 % | معتمد |
+| `max_abs_error` | ≤ 2 % | دليل سلامة الأجهزة — الفصل 2: ≤ 2 % · بروتوكول iOQ — الفصل 4: ≤ 2.5 % · مواصفات المصنع: ≤ 1 % | معتمد |
+| `max_rsd` | ≤ 1 % | إجراء تشغيلي (SOP): ≤ 1 % | معتمد |
 
 ---
 

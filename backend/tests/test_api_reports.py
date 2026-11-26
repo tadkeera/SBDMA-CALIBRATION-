@@ -165,11 +165,11 @@ async def test_run_xlsx_has_all_sheets_and_stored_values(
     assert {r[0] for r in results} >= {"T01", "T11", "T12"}
 
     limits = list(wb["Limits"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True))
-    assert len(limits) == 93
+    assert len(limits) == 95
     assert {l[7] for l in limits} >= {"APPROVED", "CONFLICT_REQUIRES_QA"}
 
     raw = list(wb["Raw inputs"].iter_rows(min_row=XLSX_FIRST_DATA_ROW, values_only=True))
-    assert any(r[1] == "actual_time" for r in raw), "raw readings must be exported verbatim"
+    assert any(r[1] == "flow_p1000" for r in raw), "raw readings must be exported verbatim"
 
 
 async def test_runs_register_xlsx(client, qa):

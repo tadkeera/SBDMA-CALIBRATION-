@@ -6,9 +6,9 @@
     "component": {
       "type": "application",
       "name": "sbdma-calibration-api",
-      "version": "2.2.1"
+      "version": "2.3.0"
     },
-    "timestamp": "2026-11-26T19:13:51Z"
+    "timestamp": "2026-11-26T22:44:21Z"
   },
   "components": [
     {
@@ -273,8 +273,8 @@
     {
       "type": "library",
       "name": "pip",
-      "version": "26.2.2",
-      "purl": "pkg:pypi/pip@26.2.2",
+      "version": "26.3",
+      "purl": "pkg:pypi/pip@26.3",
       "scope": "required"
     },
     {
@@ -516,5 +516,5 @@
       "scope": "required"
     }
   ],
-  "serialNumber": "urn:uuid:ea0a811d-17d0-5e6d-8ae2-a81687b5779a"
+  "serialNumber": "urn:uuid:c698793b-17a7-5d1a-82f8-b127619b3333"
 }

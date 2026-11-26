@@ -6,7 +6,7 @@
  *    honest failure.
  * 2. Record the run ids that already exist, so the lifecycle spec can identify the
  *    calibration *it* created instead of trusting queue order.
- * 3. Enrol the second factor for the roles that mandate one (TECHNICAL_REVIEWER,
+ * 3. Enrol the second factor for the roles that mandate one (SUPERVISOR,
  *    QA_APPROVER) and sign each of them in *through the login form*, including the
  *    authenticator code field. The resulting cookie jar is saved as a Playwright
  *    storage state, so the specs that need those roles start from a real UI session.

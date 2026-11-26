@@ -65,7 +65,7 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "attachments.manage",
         "deviations.raise",
     ),
-    "TECHNICAL_REVIEWER": (
+    "SUPERVISOR": (
         "instruments.view",
         "calibration.run",
         "calibration.review",
@@ -99,7 +99,7 @@ ROLE_RANK: Final[dict[str, int]] = {
     "VIEWER": 0,
     "ENGINEERING_SERVICE": 1,
     "ANALYST": 2,
-    "TECHNICAL_REVIEWER": 3,
+    "SUPERVISOR": 3,
     "QA_APPROVER": 4,
     "SYSTEM_ADMIN": 5,
     "SUPER_ADMIN": 6,
@@ -209,7 +209,7 @@ def assert_segregation_of_duties(
 
     if reviewer_id is not None and reviewer_id == analyst_id:
         raise SegregationOfDutiesError(
-            message_ar="فصل المهام: المراجع الفني لا يجوز أن يكون محلل التشغيل نفسه",
+            message_ar="فصل المهام: مشرف المختبر لا يجوز أن يكون محلل التشغيل نفسه",
             message_en="Segregation of duties: the reviewer cannot be the executing analyst",
         )
     if qa_approver_id is not None and qa_approver_id == analyst_id:
@@ -219,6 +219,6 @@ def assert_segregation_of_duties(
         )
     if qa_approver_id is not None and reviewer_id is not None and qa_approver_id == reviewer_id:
         raise SegregationOfDutiesError(
-            message_ar="فصل المهام: معتمد ضمان الجودة لا يجوز أن يكون المراجع الفني نفسه",
+            message_ar="فصل المهام: معتمد ضمان الجودة لا يجوز أن يكون مشرف المختبر نفسه",
             message_en="Segregation of duties: the QA approver cannot be the technical reviewer",
         )

@@ -57,3 +57,38 @@ def test_the_fallback_names_are_real_reportlab_fonts() -> None:
 def test_arabic_shaping_is_a_no_op_without_the_font(monkeypatch) -> None:  # noqa: ANN001
     monkeypatch.setattr(rs, "HAS_ARABIC_FONT", False)
     assert rs.ar("معايرة") == "معايرة"
+
+
+# ───────────────────────── release 2.3.0 · Cairo ─────────────────────────── #
+
+
+def test_the_cairo_face_ships_with_the_application_and_is_registered() -> None:
+    """The Arabic face is bundled, licensed, and actually the font the styles name."""
+    fonts = Path(__file__).resolve().parents[1] / "app" / "assets" / "fonts"
+    for name in ("Cairo-Regular.ttf", "Cairo-Bold.ttf"):
+        path = fonts / name
+        assert path.is_file(), f"{name} must ship with the backend"
+        assert path.read_bytes()[:4] == TTF_MAGIC, f"{name} is not a TrueType file"
+    # OFL requires the licence to travel with the font
+    licence = (fonts / "LICENSE-Cairo.txt").read_text(encoding="utf-8")
+    assert "SIL Open Font License" in licence
+
+    assert rs.FONT_AR_REGULAR in pdfmetrics.getRegisteredFontNames()
+    assert rs.FONT_AR_STRONG in pdfmetrics.getRegisteredFontNames()
+
+
+def test_arabic_runs_are_set_in_cairo_but_latin_runs_are_not() -> None:
+    """Arabic switches face; the Latin body of a document keeps the face it had."""
+    run = rs.ar_run("معايرة")
+    assert f'name="{rs.FONT_AR}"' in run
+    bold = rs.ar_run("معايرة", bold=True)
+    assert f'name="{rs.FONT_AR_STRONG}"' in bold
+    # a run with no Arabic is left untouched
+    assert rs.ar_run("") == ""
+
+
+def test_without_cairo_the_styles_fall_back_to_the_latin_face() -> None:
+    """A deployment that ships without the Arabic face renders in DejaVu, not a 500."""
+    assert rs._pick("Cairo", "DejaVuSans", set()) == "DejaVuSans"
+    assert rs._pick("Cairo", "DejaVuSans", {"DejaVuSans"}) == "DejaVuSans"
+    assert rs._pick("Cairo", "DejaVuSans", {"DejaVuSans", "Cairo"}) == "Cairo"

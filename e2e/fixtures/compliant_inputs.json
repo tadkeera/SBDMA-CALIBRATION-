@@ -1,53 +1,81 @@
 {
   "T01": {
-    "absorbance_dev": 0.5,
+    "wavelength_dev": 0.5,
     "d2_energy": 1450,
+    "pulsation": 0.05,
+    "oven_stability": 0.1,
+    "absorbance_dev": 0.5,
+    "noise": 0.008,
     "drift": 0.1,
     "gradient_dev": 0.4,
-    "noise": 0.008,
-    "oven_stability": 0.1,
-    "pressure_limiter_pass": "PASS",
-    "pulsation": 0.05,
-    "wavelength_dev": 0.5
+    "pressure_limiter_pass": "PASS"
   },
   "T02": {
-    "actual_time": [
-      600,
-      600,
-      600
-    ],
-    "collected_vol": [
-      10.02,
-      15.0,
-      19.9
-    ],
-    "set_flow": [
+    "flow_p1000": [
+      1.0002,
+      0.9998,
+      1.0004,
+      1.0001,
+      0.9999,
+      1.0003,
       1.0,
+      0.9997,
+      1.0002,
+      1.0001
+    ],
+    "flow_p1500": [
+      1.5003,
+      1.4998,
+      1.5001,
+      1.5002,
+      1.4999,
       1.5,
-      2.0
+      1.5004,
+      1.5001,
+      1.4998,
+      1.5002
+    ],
+    "flow_p2000": [
+      2.0004,
+      2.0001,
+      1.9997,
+      2.0002,
+      2.0,
+      1.9999,
+      2.0003,
+      2.0001,
+      2.0,
+      1.9998
     ]
   },
   "T03": {
-    "lower_limiter_pass": "PASS",
     "pulsation": 0.05,
-    "upper_limiter_pass": "PASS"
+    "upper_limiter_pass": "PASS",
+    "lower_limiter_pass": "PASS"
   },
   "T04": {
     "channel_pair": "A/B",
     "height_0": 5,
     "height_10": 105,
-    "height_100": 1005,
     "height_50": 505,
-    "height_90": 905
+    "height_90": 905,
+    "height_100": 1005
   },
   "T05": {
-    "n_injections": 10,
-    "set_vol": 50,
     "w1": 10.5,
     "w2": 10.001,
-    "water_density": 0.998
+    "water_density": 0.998,
+    "set_vol": 50,
+    "n_injections": 10
   },
   "T06": {
+    "volumes": [
+      10,
+      20,
+      30,
+      40,
+      50
+    ],
     "linearity_areas": [
       1020,
       2050,
@@ -61,24 +89,20 @@
       2052,
       2048,
       2050
-    ],
-    "volumes": [
-      10,
-      20,
-      30,
-      40,
-      50
     ]
   },
   "T07": {
-    "ref_offset": -0.5,
+    "t_set": 4,
     "t_ref_raw": 4.8,
-    "t_set": 4
+    "ref_offset": -0.5
   },
   "T08": {
-    "fluctuation": 0.1,
-    "gas_sensor_pass": "PASS",
-    "ref_offset": -0.05,
+    "t_set": [
+      30,
+      40,
+      50,
+      60
+    ],
     "t_display": [
       30.1,
       40.1,
@@ -91,20 +115,17 @@
       50.2,
       60.2
     ],
-    "t_set": [
-      30,
-      40,
-      50,
-      60
-    ]
+    "ref_offset": -0.05,
+    "fluctuation": 0.1,
+    "gas_sensor_pass": "PASS"
   },
   "T09": {
     "d2_energy": 1450,
     "lamp_hours": 320,
+    "wavelength_dev": 0.3,
     "peak_205": 205.1,
-    "peak_273": 273.2,
     "valley_245": 244.9,
-    "wavelength_dev": 0.3
+    "peak_273": 273.2
   },
   "T10": {
     "absorbance_dev": 0.4,
@@ -124,12 +145,18 @@
     ]
   },
   "T11": {
-    "drift": 0.15,
-    "noise": 0.008
+    "noise": 0.008,
+    "drift": 0.15
   },
   "T12": {
-    "area_blank": 0.15,
-    "area_sample_250": 2050,
+    "rt_values": [
+      4.512,
+      4.515,
+      4.51,
+      4.513,
+      4.511,
+      4.514
+    ],
     "areas": [
       2050,
       2055,
@@ -138,20 +165,14 @@
       2051,
       2049
     ],
-    "rt_values": [
-      4.512,
-      4.515,
-      4.51,
-      4.513,
-      4.511,
-      4.514
-    ]
+    "area_blank": 0.15,
+    "area_sample_250": 2050
   },
   "T13": {
     "leak_detector": "PASS",
+    "leak_pump": "PASS",
     "leak_hpv": "PASS",
-    "leak_lpv": "PASS",
-    "leak_pump": "PASS"
+    "leak_lpv": "PASS"
   },
   "T14": {
     "crm_wavelength": 250.0,
@@ -198,20 +219,20 @@
     ]
   },
   "T18": {
-    "a_max": 2.2,
-    "delta_a": 1.0
+    "delta_a": 1.0,
+    "a_max": 2.2
   },
   "T19": {
-    "abs_266": 0.45,
-    "abs_269": 0.65
+    "abs_269": 0.65,
+    "abs_266": 0.45
   },
   "T20": {
-    "blank_noise_h": 5,
-    "d_leading": 0.28,
     "peak_height_h": 150,
+    "blank_noise_h": 5,
+    "w_005": 0.52,
+    "d_leading": 0.28,
     "tr1": 7.2,
     "tr2": 8.5,
-    "w_005": 0.52,
     "wh1": 0.14,
     "wh2": 0.15
   }

@@ -210,6 +210,61 @@ export interface ServerReferenceStandard {
   days_to_expiry: number;
 }
 
+export interface ServerFlowRateSetPoint {
+  index: number;
+  nominal: string;
+  unit: string;
+  lower_limit: string;
+  upper_limit: string;
+  readings_per_set_point: number;
+  field_key: string;
+}
+
+export interface ServerFlowRateDefinition {
+  test_code: string;
+  test_name_ar: string;
+  test_name_en: string;
+  protocol_code: string;
+  protocol_version: string;
+  set_points: ServerFlowRateSetPoint[];
+  readings_per_set_point: number;
+  acceptance: { accuracy_pct: string; accuracy_band: string; rsd_pct: string };
+  limits: {
+    accuracy: { id: string; value: string; unit: string; approval_status: string; note_ar: string | null };
+    rsd: { id: string; value: string; unit: string; approval_status: string; note_ar: string | null };
+  };
+}
+
+export interface ServerFlowRateSetPointResult {
+  index: number;
+  nominal: string;
+  readings: (string | null)[];
+  count: number;
+  complete: boolean;
+  mean: string | null;
+  sd: string | null;
+  rsd_pct: string | null;
+  accuracy_pct: string | null;
+  lower_limit: string;
+  upper_limit: string;
+  accuracy_status: string;
+  rsd_status: string;
+  status: string;
+}
+
+export interface ServerFlowRateEvaluation {
+  set_points: ServerFlowRateSetPointResult[];
+  overall: string;
+  complete: boolean;
+  max_abs_accuracy: string | null;
+  max_rsd: string | null;
+  accuracy_limit: string;
+  rsd_limit: string;
+  acceptance: { accuracy_pct: string; rsd_pct: string; accuracy_band: string };
+  test_code: string;
+  protocol_version: string;
+}
+
 export interface ServerRunSummary {
   id: string;
   execution_code: string;
@@ -280,6 +335,10 @@ export interface ServerRun {
   reviewed_at: string | null;
   qa_approved_at: string | null;
   breakdown_component: string | null;
+  // names, not only ids: the flow-rate page has to show *who* reviewed and approved
+  analyst_username?: string | null;
+  reviewer_username?: string | null;
+  qa_approver_username?: string | null;
   results: ServerTestResult[];
 }
 
@@ -645,6 +704,14 @@ export const api = {
   },
   run: (runId: string) => request<ServerRun>(`/runs/${runId}`),
   pendingApprovals: () => request<ServerRunSummary[]>('/runs/pending/approvals'),
+
+  // flow rate (T02) — the dedicated page's own two endpoints
+  flowRateDefinition: () => request<ServerFlowRateDefinition>('/flow-rate'),
+  flowRateCalculate: (readings: (number | string | null)[][]) =>
+    request<ServerFlowRateEvaluation>('/flow-rate/calculate', {
+      method: 'POST',
+      body: JSON.stringify({ readings }),
+    }),
 
   // governance
   approveLimit: (limitId: string, password: string, reason: string) =>

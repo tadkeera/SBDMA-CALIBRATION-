@@ -79,7 +79,7 @@ async def sync_test_documentation(session: AsyncSession) -> dict[str, int]:
 
 
 async def seed_protocol(session: AsyncSession) -> dict[str, int]:
-    created = {"protocol": 0, "tests": 0, "limits": 0, "formulas": 0}
+    created = {"protocol": 0, "tests": 0, "limits": 0, "formulas": 0, "superseded": 0}
 
     existing = (
         await session.execute(
@@ -93,6 +93,19 @@ async def seed_protocol(session: AsyncSession) -> dict[str, int]:
         # The protocol exists: still heal the documentation columns, because a release
         # that adds a documented procedure must reach a database that is already seeded.
         return created | {"skipped": 1} | await sync_test_documentation(session)
+
+    # A new version supersedes the one it replaces, but only after the new row exists.
+    # The old row keeps its tests, formulas and limits: historic runs are read against the
+    # protocol they were executed under, so nothing is rewritten or removed.
+    earlier = (
+        await session.execute(
+            select(CalibrationProtocol).where(
+                CalibrationProtocol.protocol_code == PROTOCOL_CODE,
+                CalibrationProtocol.version != PROTOCOL_VERSION,
+                CalibrationProtocol.status == "APPROVED",
+            )
+        )
+    ).scalars().all()
 
     protocol = CalibrationProtocol(
         id=uuid.uuid4(),
@@ -111,6 +124,10 @@ async def seed_protocol(session: AsyncSession) -> dict[str, int]:
     session.add(protocol)
     await session.flush()
     created["protocol"] = 1
+    for row in earlier:
+        row.status = "SUPERSEDED"
+    if earlier:
+        created["superseded"] = len(earlier)
 
     test_id_by_code: dict[str, uuid.UUID] = {}
     for spec in TESTS:

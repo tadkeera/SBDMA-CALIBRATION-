@@ -66,6 +66,11 @@ FONT_SEARCH_PATH: tuple[Path, ...] = (
 
 FONT_REGULAR = "DejaVuSans"
 FONT_BOLD = "DejaVuSans-Bold"
+#: The Arabic face the board asked for. It is used for Arabic runs only: Cairo's Latin
+#: shapes are fine, but mixing two Latin faces inside one table makes the columns jump,
+#: and the Latin side of these documents was already accepted by the laboratory.
+FONT_AR_REGULAR = "Cairo"
+FONT_AR_BOLD = "Cairo-Bold"
 #: What ReportLab registers out of the box; used when no Arabic-capable font is found,
 #: so a missing font degrades the shaping instead of raising from inside a PDF build.
 FALLBACK_REGULAR = "Helvetica"
@@ -81,20 +86,45 @@ def _font_source(filename: str) -> Path | None:
 
 
 def _register_fonts() -> bool:
-    """Register an Arabic-capable font from the first place that has one."""
+    """Register the Latin body face and, when present, the Cairo Arabic face.
+
+    Cairo is optional on purpose: a deployment that ships without it still produces every
+    document, with Arabic in DejaVu. What must never happen is a PDF that raises because a
+    font file was missing at build time.
+    """
+    registered = pdfmetrics.getRegisteredFontNames()
     try:
         regular = _font_source("DejaVuSans.ttf")
         bold = _font_source("DejaVuSans-Bold.ttf")
         if regular is None or bold is None:
             return False
-        registered = pdfmetrics.getRegisteredFontNames()
         if FONT_REGULAR not in registered:
             pdfmetrics.registerFont(TTFont(FONT_REGULAR, str(regular)))
         if FONT_BOLD not in registered:
             pdfmetrics.registerFont(TTFont(FONT_BOLD, str(bold)))
-        return True
     except Exception:  # pragma: no cover - a corrupt font file
         return False
+
+    try:
+        cairo_regular = _font_source("Cairo-Regular.ttf")
+        cairo_bold = _font_source("Cairo-Bold.ttf")
+        if cairo_regular is not None and FONT_AR_REGULAR not in registered:
+            pdfmetrics.registerFont(TTFont(FONT_AR_REGULAR, str(cairo_regular)))
+        if cairo_bold is not None and FONT_AR_BOLD not in registered:
+            pdfmetrics.registerFont(TTFont(FONT_AR_BOLD, str(cairo_bold)))
+        if cairo_regular is not None:
+            from reportlab.pdfbase.pdfmetrics import registerFontFamily
+
+            registerFontFamily(
+                FONT_AR_REGULAR,
+                normal=FONT_AR_REGULAR,
+                bold=FONT_AR_BOLD if cairo_bold is not None else FONT_AR_REGULAR,
+                italic=FONT_AR_REGULAR,
+                boldItalic=FONT_AR_BOLD if cairo_bold is not None else FONT_AR_REGULAR,
+            )
+    except Exception:  # pragma: no cover - a corrupt font file
+        pass
+    return True
 
 
 HAS_ARABIC_FONT = _register_fonts()
@@ -106,6 +136,23 @@ FONT_BODY = FONT_REGULAR if HAS_ARABIC_FONT else FALLBACK_REGULAR
 FONT_STRONG = FONT_BOLD if HAS_ARABIC_FONT else FALLBACK_BOLD
 
 
+def _pick(face: str, fallback: str, registered: set[str]) -> str:
+    """Choose a registered face, or fall back to one that is certain to exist.
+
+    Fonts are a deployment detail: a release that ships without Cairo must still print a
+    certificate. The decision is a function so the fallback can be tested without removing
+    files from the image.
+    """
+    return face if HAS_ARABIC_FONT and face in registered else fallback
+
+
+_REGISTERED = set(pdfmetrics.getRegisteredFontNames())
+
+#: The Arabic face, or the Latin body face when Cairo is not installed.
+FONT_AR = _pick(FONT_AR_REGULAR, FONT_BODY, _REGISTERED)
+FONT_AR_STRONG = _pick(FONT_AR_BOLD, FONT_STRONG, _REGISTERED)
+
+
 def ar(text: str) -> str:
     """Shape and reorder Arabic text for ReportLab's logical-order renderer."""
     if not text:
@@ -113,6 +160,18 @@ def ar(text: str) -> str:
     if not HAS_ARABIC_FONT:
         return text
     return get_display(arabic_reshaper.reshape(str(text)))
+
+
+def ar_run(text: str, *, bold: bool = False) -> str:
+    """Shape an Arabic run *and* mark it for the Cairo face.
+
+    Used where Arabic sits inside a paragraph that is otherwise Latin: the paragraph keeps
+    its own font, the Arabic span switches to Cairo, and neither needs a second style.
+    """
+    if not text:
+        return ""
+    face = FONT_AR_STRONG if bold else FONT_AR
+    return f'<font name="{face}">{ar(text)}</font>'
 
 
 def mix(en_text: str, ar_text: str) -> str:
@@ -265,6 +324,16 @@ def _styles() -> dict[str, ParagraphStyle]:
             "lh_ar", parent=base["Normal"], fontName=bold, fontSize=8.6, leading=11.4,
             alignment=TA_RIGHT, textColor=colors.HexColor("#16202b"),
         ),
+        #: An Arabic run set in Cairo, for the places that are Arabic by nature rather
+        #: than by translation: the letterhead block, certificate notes, manual headings.
+        "ar": ParagraphStyle(
+            "ar", parent=base["Normal"], fontName=FONT_AR, fontSize=9, leading=14,
+            alignment=TA_RIGHT, textColor=colors.HexColor("#16202b"),
+        ),
+        "ar_bold": ParagraphStyle(
+            "ar_bold", parent=base["Normal"], fontName=FONT_AR_STRONG, fontSize=10, leading=15,
+            alignment=TA_RIGHT, textColor=BRAND,
+        ),
         "lh_en": ParagraphStyle(
             "lh_en", parent=base["Normal"], fontName=bold, fontSize=8.6, leading=11.4,
             alignment=0, textColor=colors.HexColor("#16202b"),  # TA_LEFT
@@ -320,7 +389,7 @@ def _letterhead(
     leading = size * 1.34
 
     ar_style = ParagraphStyle(
-        "lh_ar_run", parent=st["lh_ar"], fontSize=size, leading=leading
+        "lh_ar_run", parent=st["lh_ar"], fontName=FONT_AR_STRONG, fontSize=size, leading=leading
     )
     en_style = ParagraphStyle(
         "lh_en_run", parent=st["lh_en"], fontSize=size, leading=leading

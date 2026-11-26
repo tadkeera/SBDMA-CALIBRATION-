@@ -22,7 +22,7 @@ ROLE_META = {
     "SUPER_ADMIN": ("المدير الأعلى للنظام", "Super Administrator"),
     "SYSTEM_ADMIN": ("مدير النظام", "System Administrator"),
     "QA_APPROVER": ("معتمد ضمان الجودة", "QA Approver"),
-    "TECHNICAL_REVIEWER": ("المراجع الفني", "Technical Reviewer"),
+    "SUPERVISOR": ("مشرف المختبر", "Supervisor"),
     "ANALYST": ("محلل مختبر", "Laboratory Analyst"),
     "ENGINEERING_SERVICE": ("خدمات هندسية وصيانة", "Engineering Service"),
     "VIEWER": ("مطالع", "Read-only Viewer"),

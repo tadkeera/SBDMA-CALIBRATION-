@@ -2,7 +2,7 @@
  * RFC 6238 TOTP, verified against the same secret the server holds.
  *
  * The suite must be able to sign in as the roles that mandate a second factor
- * (TECHNICAL_REVIEWER, QA_APPROVER) with no phone in the loop. The enrolment API
+ * (SUPERVISOR, QA_APPROVER) with no phone in the loop. The enrolment API
  * hands the secret back exactly once, so the suite keeps it and derives codes the
  * way an authenticator app would.
  *

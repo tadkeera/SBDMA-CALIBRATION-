@@ -20,7 +20,13 @@ from tests.conftest import PASSWORDS
 # backend/tests/test_e2e_fixtures.py fails the build if they drift).
 COMPLIANT_INPUTS: dict[str, dict[str, object]] = {
     "T01": {"wavelength_dev": 0.5, "d2_energy": 1450, "pulsation": 0.05, "oven_stability": 0.1, "absorbance_dev": 0.5, "noise": 0.008, "drift": 0.1, "gradient_dev": 0.4, "pressure_limiter_pass": "PASS"},
-    "T02": {"set_flow": [1.0, 1.5, 2.0], "collected_vol": [10.02, 15.0, 19.9], "actual_time": [600, 600, 600]},
+    # T02 is ten replicate flows at each of 1.000 / 1.500 / 2.000 mL/min: the mean carries
+    # the accuracy verdict (±2.0 %), the %RSD across the ten carries precision (≤ 1.0 %).
+    "T02": {
+        "flow_p1000": [1.0002, 0.9998, 1.0004, 1.0001, 0.9999, 1.0003, 1.0000, 0.9997, 1.0002, 1.0001],
+        "flow_p1500": [1.5003, 1.4998, 1.5001, 1.5002, 1.4999, 1.5000, 1.5004, 1.5001, 1.4998, 1.5002],
+        "flow_p2000": [2.0004, 2.0001, 1.9997, 2.0002, 2.0000, 1.9999, 2.0003, 2.0001, 2.0000, 1.9998],
+    },
     "T03": {"pulsation": 0.05, "upper_limiter_pass": "PASS", "lower_limiter_pass": "PASS"},
     "T04": {"channel_pair": "A/B", "height_0": 5, "height_10": 105, "height_50": 505, "height_90": 905, "height_100": 1005},
     "T05": {"w1": 10.5, "w2": 10.001, "water_density": 0.998, "set_vol": 50, "n_injections": 10},
@@ -515,16 +521,16 @@ async def test_kpis_reflect_live_rows(client, admin_session):
     assert data["runs"]["pass_rate_percent"] is not None
 
 
-async def test_protocol_endpoint_returns_20_tests_and_93_limits(client, admin_session):
-    """Protocol v2.0.0 is what the API serves — not the 13-test v1 table."""
+async def test_protocol_endpoint_returns_20_tests_and_95_limits(client, admin_session):
+    """Protocol v2.1.0 is what the API serves — not the 13-test v1 table."""
     response = await client.get(
         "/api/v1/protocols/HPLC-SHIMADZU-LC2050C-PROTOCOL", headers=admin_session["hash"]
     )
     assert response.status_code == 200
     data = response.json()["data"]
-    assert data["version"] == "2.0.0"
+    assert data["version"] == "2.1.0"
     assert len(data["tests"]) == 20
-    assert sum(len(t["limits"]) for t in data["tests"]) == 93
+    assert sum(len(t["limits"]) for t in data["tests"]) == 95
     assert data["status"] == "APPROVED"
 
 
