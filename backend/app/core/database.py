@@ -46,19 +46,20 @@ def _ssl_context_for(sslmode: str) -> ssl.SSLContext:
     return context
 
 
-async def connect_without_statement_cache(*args: object, **kwargs: object) -> object:
-    """Open an asyncpg connection that never prepares a statement.
+def anonymous_statement_name() -> str:
+    """The name every prepared statement is given: none.
 
-    Used as the dialect's ``async_creator_fn``. ``statement_cache_size=0`` tells asyncpg
-    to send unnamed statements, which a transaction-mode pooler cannot collide on;
-    ``max_cached_statement_lifetime=0`` closes the door on caching even if a future asyncpg
-    reads the two differently. The alternative — trusting a kwarg that production proved
-    was dropped on the way to the driver — was a 503 on a healthy database.
+    This is the fix for the failure that survived every cache setting. asyncpg 0.25+
+    treats ``prepare(query, name=None)`` as **named** — it generates
+    ``__asyncpg_stmt_1__``, ``__asyncpg_stmt_2__`` … per connection — and SQLAlchemy's
+    asyncpg dialect passes the result of this hook as ``name``. An empty string is a
+    string, so asyncpg uses it verbatim, and PostgreSQL reads an empty statement name as
+    "anonymous". Behind a transaction-mode pooler, where server connections are shared
+    between clients, a named statement is a collision waiting to happen; an anonymous one
+    cannot collide. Measured: with this hook, ``pg_prepared_statements`` stays empty on
+    the server while the application queries normally.
     """
-    kwargs["statement_cache_size"] = 0
-    kwargs["max_cached_statement_lifetime"] = 0
-    kwargs.pop("prepared_statement_cache_size", None)  # SQLAlchemy's own argument
-    return await asyncpg.connect(*args, **kwargs)
+    return ""
 
 
 def engine_url_and_connect_args(database_url: str) -> tuple[str, dict]:
@@ -86,49 +87,24 @@ def engine_url_and_connect_args(database_url: str) -> tuple[str, dict]:
         connect_args["ssl"] = False
 
     # Prepared statements are always off, for every connection: see the note in
-    # ``config``. Setting the two arguments below is not enough on the platform we deploy
-    # to — measured, not assumed: a connection that goes through SQLAlchemy still prepared
-    # ``__asyncpg_stmt_2__`` while a direct ``asyncpg.connect(statement_cache_size=0)`` in
-    # the same process, against the same pooler, ran fine. So the driver is also forced
-    # through its own creator hook, which the asyncpg dialect calls for every connection:
-    # two independent mechanisms, because one of them was demonstrably ignored.
-    connect_args.update(prepared_statement_cache_size=0, statement_cache_size=0)
-    connect_args["async_creator_fn"] = connect_without_statement_cache
+    # ``config``. Three arguments, because they govern three different layers:
+    #   * ``prepared_statement_cache_size=0`` — SQLAlchemy's own cache of named statements;
+    #   * ``statement_cache_size=0``         — asyncpg's cache;
+    #   * ``prepared_statement_name_func``   — the *name*, which asyncpg 0.25+ generates
+    #     even when no cache is in play. This last one is what production was failing on:
+    #     the caches were off and every query still prepared ``__asyncpg_stmt_2``.
+    connect_args.update(
+        prepared_statement_cache_size=0,
+        statement_cache_size=0,
+        prepared_statement_name_func=anonymous_statement_name,
+    )
 
-    # URL spellings of the same intent are understood and removed: ``?prepared_statements=0``
-    # and Neon's ``?pgbouncer=true`` are not keywords asyncpg accepts, and an unknown
-    # argument is a hard TypeError at connect time.
     query.pop("prepared_statements", None)
     query.pop("pgbouncer", None)
 
     cleaned = url.set(query=query)
     return cleaned.render_as_string(hide_password=False), connect_args
 
-
-def _force_driver_cache_off() -> None:
-    """Make "no prepared statements" true at the driver, whatever layer connects.
-
-    Measured on the platform: the engine was built with ``statement_cache_size=0`` and
-    ``prepared_statement_cache_size=0``, a direct ``asyncpg.connect`` under the same
-    settings was clean, and a pooled connection still prepared ``__asyncpg_stmt_2`` — the
-    argument was lost somewhere between the engine and the driver. Rather than keep
-    hunting the layer responsible, the driver's own entry point is wrapped: every
-    connection opened by anything in this process is uncached. The cost is microseconds
-    per query; the alternative was a 503 on a healthy database.
-    """
-    original = asyncpg.connect
-
-    async def connect_uncached(*args: object, **kwargs: object) -> object:
-        kwargs["statement_cache_size"] = 0
-        kwargs["max_cached_statement_lifetime"] = 0
-        kwargs.pop("prepared_statement_cache_size", None)  # SQLAlchemy's own argument
-        return await original(*args, **kwargs)
-
-    connect_uncached.__name__ = "connect_uncached"
-    asyncpg.connect = connect_uncached  # type: ignore[assignment]
-
-
-_force_driver_cache_off()
 
 _engine_url, _connect_args = engine_url_and_connect_args(_settings.database_url)
 
