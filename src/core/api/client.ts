@@ -399,6 +399,87 @@ export interface ServerRoleOption {
   assignable: boolean;
 }
 
+export interface ServerTestStatus {
+  test_code: string;
+  name_ar: string;
+  name_en: string;
+  module: string;
+  sequence_order: number;
+  standard_ref: string;
+  is_active: boolean;
+  is_mandatory: boolean;
+  limits_count: number;
+  updated_at: string | null;
+}
+
+export interface ServerManualIndexItem {
+  code: string;
+  sequence_order: number;
+  name_en: string;
+  name_ar: string;
+  module: string;
+  standard_ref: string;
+  is_active: boolean;
+  overview_en: string | null;
+  readings_count: number;
+  equations_count: number;
+  limits_count: number;
+  references_count: number;
+}
+
+export interface ServerManualReading {
+  key: string;
+  label_en: string;
+  label_ar: string | null;
+  type: string;
+  length: number | null;
+  unit: string | null;
+  required: boolean;
+  options: string[];
+  ideal_value: string | null;
+  ideal_note: string | null;
+}
+
+export interface ServerManualChart {
+  kind: 'line' | 'bar';
+  x_label: string;
+  y_label: string;
+  points?: Array<{ x: number; y: number }>;
+  bars?: Array<{ label: string; value: number; unit: string }>;
+}
+
+export interface ServerManualEntry {
+  code: string;
+  sequence_order: number;
+  name_en: string;
+  name_ar: string;
+  module: string;
+  standard_ref: string;
+  is_active: boolean;
+  is_mandatory: boolean;
+  overview_en: string | null;
+  procedure_en: string[];
+  readings: ServerManualReading[];
+  equations: Array<{ key: string; expression: string; description_en: string | null; decimals: number }>;
+  evaluation: Array<{ metric: string; text_en: string }>;
+  limits: Array<{
+    metric_key: string;
+    source_type: string;
+    operator: string;
+    min_value: string | null;
+    max_value: string | null;
+    unit: string | null;
+    approval_status: string;
+    flagged: boolean;
+    note_ar: string | null;
+  }>;
+  references: string[];
+  limit_notes: string[];
+  chart: ServerManualChart | null;
+  protocol_code: string;
+  protocol_version: string;
+}
+
 export const api = {
   // auth
   login: (username: string, password: string, totpCode?: string) =>
@@ -491,6 +572,33 @@ export const api = {
         }>;
       }>;
     }>(`/protocols/${code}`),
+
+  // test lifecycle (Control Center) — the server owns the permission; the UI only
+  // reflects `can_manage` and never decides on its own whether a toggle may be sent
+  testStatuses: () =>
+    request<{
+      items: ServerTestStatus[];
+      can_manage: boolean;
+      protocol_code: string;
+      enabled: number;
+      total: number;
+    }>('/tests'),
+  setTestStatus: (code: string, is_active: boolean, reason: string) =>
+    request<{ test_code: string; is_active: boolean; audit_action: string }>(
+      `/tests/${code}/status`,
+      { method: 'PATCH', body: JSON.stringify({ is_active, reason }) },
+    ),
+
+  // reference manual — documentation for the twenty tests
+  manualIndex: () =>
+    request<{
+      protocol_code: string;
+      protocol_version: string;
+      title_en: string;
+      items: ServerManualIndexItem[];
+      count: number;
+    }>('/reference-manual'),
+  manualEntry: (code: string) => request<ServerManualEntry>(`/reference-manual/${code}`),
 
   // runs
   createRun: (payload: {

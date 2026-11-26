@@ -43,6 +43,7 @@ from app.core.config import get_settings
 from app.core.exceptions import AppError
 from app.schemas.common import ok
 from app.seed.seed_protocol import seed_protocol
+from app.seed.seed_rbac import seed_rbac
 from app.services.audit_service import AuditService
 from app.services.kpi_report_service import build_kpi_report
 from app.services.notification_service import NotificationService
@@ -200,6 +201,9 @@ async def seed(request: Request, session: SessionDep):
     the only symptom is a report that quietly disagrees with the document. This route
     makes "the code and the database agree" a single authenticated POST.
 
+    It also re-runs the RBAC seed, which is additive and idempotent, so a permission
+    introduced by this release exists in the database without a shell.
+
     It is safe to call on every deploy: :func:`seed_protocol` returns
     ``{"skipped": 1}`` when that code/version already exists, and it never updates or
     deletes an existing protocol — a calibration record points at the version it was
@@ -207,7 +211,9 @@ async def seed(request: Request, session: SessionDep):
     """
     _authorise(request)
     try:
-        summary = await seed_protocol(session)
+        # RBAC first: a release that adds a permission must land it in the same call,
+        # otherwise the Control Center switch has nothing to grant.
+        summary = await seed_rbac(session) | await seed_protocol(session)
     except Exception as exc:
         await _record_failure(request, "seed", exc)
         raise

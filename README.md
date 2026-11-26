@@ -1,10 +1,10 @@
 # SBDMA · نظام إدارة ومعايرة الأجهزة المخبرية
 ### Laboratory Calibration & OQ Intelligence Platform — Supreme Board of Drugs & Medical Devices
 
-[![Version](https://img.shields.io/badge/version-2.1.0-21695e)](VERSION)
+[![Version](https://img.shields.io/badge/version-2.2.0-21695e)](VERSION)
 [![ISO/IEC 17025](https://img.shields.io/badge/ISO%2FIEC-17025-21695e)](#الامتثال-التنظيمي)
 [![21 CFR Part 11](https://img.shields.io/badge/21%20CFR-Part%2011-21695e)](#الامتثال-التنظيمي)
-[![Tests](https://img.shields.io/badge/tests-102%20passing-16794f)](#الاختبارات-المنفذة)
+[![Tests](https://img.shields.io/badge/tests-366%20passing-16794f)](#الاختبارات-المنفذة)
 
 ---
 
@@ -40,10 +40,10 @@ Incubators, Stability Chambers).
 | المسار | اللوحة | الجمهور |
 |---|---|---|
 | `/` | لوحة المؤشرات — KPIs حقيقية محسوبة من البيانات الفعلية | الجميع |
-| `/lab` | لوحة المختبر — إدخال القراءات الخام، `Run Calibration`، الرسوم، مصفوفة ما بعد الأعطال | `ANALYST` |
+| `/lab` | لوحة المختبر — إدخال القراءات الخام، `Run Calibration` أو اختبار واحد، الرسوم، الإجراء الموثّق بالإنجليزية، شهادة لكل اختبار، مصفوفة ما بعد الأعطال | `ANALYST` |
 | `/qa` | ضمان الجودة — مصفوفة حدود القبول، التعارضات، المراجعة الفنية، الاعتماد النهائي والإقفال | `QA_APPROVER` |
 | `/engineering` | الصيانة والهندسة — تذاكر الأعطال وتفعيل الاختبارات الإلزامية | `ENGINEERING_SERVICE` |
-| `/control` | الإدارة المركزية — الأجهزة، الأدوات المرجعية، المستخدمون، البروتوكول، النظام | `SYSTEM_ADMIN` |
+| `/control` | الإدارة المركزية — الأجهزة، الأدوات المرجعية، المستخدمون، **حالة الاختبارات (تفعيل/تعطيل)**، **الدليل المرجعي (بحث + PDF)**، البروتوكول، النظام | `SYSTEM_ADMIN` |
 | `/audit` | سجل التدقيق — سلسلة SHA-256 قابلة للتحقق | `QA_APPROVER` |
 
 ---
@@ -168,13 +168,13 @@ https://<project>.vercel.app/api/v1/*    →  api   (FastAPI من backend/، ent
 
 | الحزمة | العدد | النتيجة | الأمر |
 |---|---|---|---|
-| محرك الحسابات والبروتوكول (TypeScript) | 22 | ✅ ناجحة | `npx vitest run` |
+| محرك الحسابات والبروتوكول (TypeScript) | 25 | ✅ ناجحة | `npx vitest run` |
 | طبقة التكيّف مع الخادم (TypeScript) | 15 | ✅ ناجحة | `npx vitest run` |
 | توليد رمز TOTP للحزمة (TypeScript، متجهات RFC) | 4 | ✅ ناجحة | `npx vitest run` |
-| محرك الحسابات + API + الحوكمة + التقارير + الترويسة + المرفقات + حدّ الطلبات + حراسة النشر + حماية E2E (Python/PostgreSQL/Redis) | 274 | ✅ ناجحة | `cd backend && pytest` |
+| محرك الحسابات + API + الحوكمة + التقارير + الترويسة + المرفقات + حدّ الطلبات + حراسة النشر + دورة حياة الاختبارات + الدليل المرجعي + حماية E2E (Python/PostgreSQL/Redis) | 299 | ✅ ناجحة | `cd backend && pytest` |
 | بوابة CI (PostgreSQL 16 + Redis 8 خدميين، تغطية ≥ 85%) | 4 وظائف | ✅ | `.github/workflows/ci.yml` |
 | بوابة الأمان (أسرار · ثغرات التبعيات · SBOM · تمرين استعادة) | 4 وظائف | ✅ | `.github/workflows/security.yml` |
-| **حزمة E2E داخل المستودع** (Playwright/Chromium على بنية إنتاج) | **19 اختباراً** | ✅ دخول ← 20 اختباراً ← مراجعة ← اعتماد ← شهادة PDF/XLSX ← سلسلة التدقيق ← إعداد الترويسة | `npm run e2e:prepare && npm run e2e` |
+| **حزمة E2E داخل المستودع** (Playwright/Chromium على بنية إنتاج) | **23 اختباراً** | ✅ دخول ← 20 اختباراً ← مراجعة ← اعتماد ← شهادة PDF/XLSX ← شهادة اختبار واحد ← تفعيل/تعطيل اختبار ← الإجراء الإنجليزي ← الدليل المرجعي وPDF ← سلسلة التدقيق ← إعداد الترويسة | `npm run e2e:prepare && npm run e2e` |
 
 التغطية تشمل: أولويات العمليات، صيغ التدفق والتدرج والحقن الوزني، OLS، `%RSD`، الحساسية
 النسبية، الترحيل، رفض التعبيرات الخطرة (`__import__`, `eval`, `open`, `;`, comprehensions)،

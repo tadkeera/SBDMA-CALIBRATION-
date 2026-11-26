@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
@@ -113,11 +113,38 @@ class TestDefinitionOut(ORMModel):
     name_en: str
     standard_ref: str
     procedure_ar: list | None
+    procedure_en: list | None = None
     input_schema_jsonb: dict[str, Any] | None
     chart_config_jsonb: dict[str, Any] | None
     is_mandatory: bool
+    is_active: bool = True
+    reference_jsonb: dict[str, Any] | None = None
     limits: list[LimitOut] = Field(default_factory=list)
     formulas: list[FormulaOut] = Field(default_factory=list)
+
+
+class TestStatusUpdate(BaseModel):
+    """Payload for the Control Center enable/disable switch.
+
+    ``reason`` is mandatory: taking a test out of routine use is a governance decision
+    and the audit trail must record why, not only what.
+    """
+
+    is_active: bool
+    reason: str = Field(min_length=8, max_length=500)
+
+
+class TestStatusOut(ORMModel):
+    test_code: str
+    name_ar: str
+    name_en: str
+    module: str
+    sequence_order: int
+    standard_ref: str
+    is_active: bool
+    is_mandatory: bool
+    limits_count: int = 0
+    updated_at: datetime | None = None
 
 
 class ProtocolOut(ORMModel):

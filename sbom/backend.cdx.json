@@ -6,9 +6,9 @@
     "component": {
       "type": "application",
       "name": "sbdma-calibration-api",
-      "version": "2.1.0"
+      "version": "2.2.0"
     },
-    "timestamp": "2026-11-25T23:53:49Z"
+    "timestamp": "2026-11-26T18:31:01Z"
   },
   "components": [
     {
@@ -446,5 +446,5 @@
       "scope": "required"
     }
   ],
-  "serialNumber": "urn:uuid:2c991a11-0026-505e-bae8-3ffb382053e2"
+  "serialNumber": "urn:uuid:d3bd2ae7-a034-58ad-acb9-a2d26504321e"
 }

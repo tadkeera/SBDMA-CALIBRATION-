@@ -270,6 +270,11 @@ async def qa(client):
 
 
 @pytest.fixture()
+async def viewer(client):
+    return await login(client, "viewer")
+
+
+@pytest.fixture()
 async def instrument_id(client, admin_session) -> uuid.UUID:  # noqa: ANN001
     response = await admin_session["client"].get("/api/v1/instruments", headers=admin_session["hash"])
     rows = response.json()["data"]

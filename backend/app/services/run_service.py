@@ -213,6 +213,16 @@ class RunService:
         )
         return run
 
+    async def _disabled_codes(self, protocol_id: uuid.UUID) -> set[str]:
+        """Test codes switched off in the Control Center for this protocol version."""
+        rows = await self.session.execute(
+            select(TestDefinition.test_code).where(
+                TestDefinition.protocol_id == protocol_id,
+                TestDefinition.is_active.is_(False),
+            )
+        )
+        return {row[0] for row in rows.all()}
+
     # ────────────────────────────── execute ──────────────────────────────── #
 
     async def _load_protocol_assets(
@@ -369,6 +379,25 @@ class RunService:
             scoped = [t for t in domain_tests if t.code in scope_tests]
         else:
             scoped = list(domain_tests)
+
+        # Lifecycle guard, server-side. A test switched off in the Control Center must
+        # not execute even if somebody posts its code directly to this endpoint: the
+        # laboratory screen merely hides it, and hiding is not a control. Refused for
+        # every caller, including a manager — a disabled test is disabled.
+        disabled_codes = await self._disabled_codes(run.protocol_id)
+        disabled = sorted(t.code for t in scoped if t.code in disabled_codes)
+        if disabled:
+            raise PermissionDeniedError(
+                message_ar=(
+                    "اختبارات معطّلة في مركز التحكم ولا يمكن تنفيذها: " + ", ".join(disabled)
+                ),
+                message_en=(
+                    "Tests disabled in the Control Center cannot be executed: "
+                    + ", ".join(disabled)
+                ),
+                code="TEST_DISABLED",
+                details={"disabled_tests": disabled},
+            )
 
         missing_payloads = [t.code for t in scoped if t.mandatory and t.code not in raw_inputs]
         # The scoring engine is CPU-bound: seventy-five formulas evaluated at thirty

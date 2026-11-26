@@ -10,6 +10,7 @@ from app.api.v1 import (
     health,
     internal,
     notifications,
+    reference_manual,
     reports,
     runs,
     users,
@@ -23,6 +24,7 @@ api_router.include_router(branding.router)
 api_router.include_router(runs.router)
 api_router.include_router(catalogue.router)
 api_router.include_router(reports.router)
+api_router.include_router(reference_manual.router)
 api_router.include_router(users.router)
 api_router.include_router(deviations.router)
 api_router.include_router(notifications.router)

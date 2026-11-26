@@ -35,7 +35,13 @@ class AppError(Exception):
         field: str | None = None,
         details: dict[str, Any] | None = None,
         status_code: int | None = None,
+        code: str | None = None,
     ) -> None:
+        # ``code`` lets a subclass keep its HTTP status while naming a more specific
+        # machine-readable condition (e.g. 403 PERMISSION_DENIED, code TEST_DISABLED),
+        # which is what the client needs in order to say *why* it was refused.
+        if code:
+            self.code = code
         self.message_ar = message_ar or self.message_ar
         self.message_en = message_en or self.message_en
         self.field = field or self.field

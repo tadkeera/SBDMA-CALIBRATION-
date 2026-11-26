@@ -25,6 +25,7 @@ from app.services.report_service import (
     build_run_xlsx,
     document_id,
 )
+from app.services.test_certificate import build_test_certificate_pdf
 
 
 class ExportService:
@@ -274,6 +275,120 @@ class ExportService:
             ip_address=ip,
         )
         filename = f"{run.execution_code}-certificate.pdf"
+        return pdf, filename
+
+    async def test_certificate_pdf(
+        self,
+        *,
+        run_id: uuid.UUID,
+        test_code: str,
+        principal: Principal,
+        ip: str | None = None,
+    ) -> tuple[bytes, str]:
+        """A certificate for a single test of an approved run.
+
+        Same gate as the run certificate — approved, locked and signed — because what
+        makes a certificate a record rather than a printout is that it refers to a
+        frozen run with a recorded fingerprint. Only a PASS test is certified: a
+        certificate attests conformity, and a FAIL verdict is a deviation, not a
+        certificate.
+        """
+        principal.require("reports.export")
+        data = await self._load(run_id, principal)
+        run: CalibrationRun = data["run"]
+
+        if not run.is_locked or run.qa_approved_at is None or not run.certificate_hash:
+            raise ConflictError(
+                message_ar=(
+                    "لا يمكن إصدار شهادة اختبار قبل الاعتماد النهائي من ضمان الجودة — "
+                    "الشهادة تُصدر فقط لتشغيل مقفل وموقّع."
+                ),
+                message_en="A test certificate can only be issued for an approved and locked run.",
+            )
+
+        result = next((r for r in data["results"] if r.test_code == test_code), None)
+        if result is None:
+            raise NotFoundError(
+                message_ar=f"الاختبار {test_code} غير موجود في هذا التشغيل",
+                message_en=f"Test {test_code} is not part of this run",
+            )
+        if result.status != "PASS":
+            raise ConflictError(
+                message_ar=(
+                    f"لا تُصدر شهادة للاختبار {test_code} حالته {result.status} — "
+                    "الشهادة تُصدر فقط لاختبار مطابق."
+                ),
+                message_en=(
+                    f"Test {test_code} is {result.status}; a certificate is only issued for a PASS."
+                ),
+            )
+
+        definition = await self.session.get(TestDefinition, result.test_definition_id)
+        if definition is None:  # pragma: no cover - FK guarantees it
+            raise NotFoundError(message_ar="تعريف الاختبار غير موجود", message_en="Test definition missing")
+
+        fields = ((definition.input_schema_jsonb or {}).get("fields")) or []
+        labels = {f.get("key"): (f.get("label_en"), f.get("unit")) for f in fields}
+
+        readings: list[list[str]] = []
+        for key, value in (result.raw_inputs_jsonb or {}).items():
+            label, unit = labels.get(key, (key, ""))
+            shown = ", ".join(str(v) for v in value) if isinstance(value, list) else str(value)
+            readings.append([label or key, shown, unit or "—"])
+
+        metrics_payload: list[list[str]] = []
+        for metric in result.metric_evaluations_jsonb or []:
+            unit = metric.get("unit") or ""
+            value = metric.get("value")
+            metrics_payload.append(
+                [
+                    metric.get("metric_key", ""),
+                    f"{value} {unit}".strip() if value not in (None, "") else "—",
+                    metric.get("limit_text") or "—",
+                    metric.get("applied_source") or "—",
+                    metric.get("status", ""),
+                    (metric.get("message_ar") or "—"),
+                ]
+            )
+
+        payload = self._common_payload(data, "TCERT")
+        payload["document_id"] = document_id("TCERT", f"{run.execution_code}-{test_code}")
+        payload["branding"] = await BrandingService(self.session).load()
+        payload["test"] = {
+            "code": definition.test_code,
+            "name_en": definition.name_en,
+            "name_ar": definition.name_ar,
+            "module": definition.module,
+            "standard_ref": definition.standard_ref,
+            "status": result.status,
+            "notes_ar": result.notes_ar,
+        }
+        payload["readings"] = readings
+        payload["metrics"] = metrics_payload
+        # the page count is unknown until layout; the footer prints "of N" — build once
+        # to count, then rebuild with the real total so the footer is never wrong
+        pdf = await asyncio.to_thread(build_test_certificate_pdf, payload)
+        payload["page_total"] = pdf.count(b"/Type /Page\n") or pdf.count(b"/Type /Page") or 1
+        pdf = await asyncio.to_thread(build_test_certificate_pdf, payload)
+
+        await AuditService(self.session).record(
+            action="TEST_CERTIFICATE_EXPORTED",
+            entity_type="calibration_test_result",
+            entity_id=result.id,
+            actor_label=principal.username,
+            actor_id=principal.user_id,
+            role_label=principal.primary_role,
+            department_id=run.department_id,
+            new_values={
+                "document_id": payload["document_id"],
+                "test_code": test_code,
+                "run_code": run.execution_code,
+                "bytes": len(pdf),
+            },
+            reason=f"إصدار شهادة معايرة للاختبار {test_code}",
+            ip_address=ip,
+        )
+        filename = f"{run.execution_code}-{test_code}-certificate.pdf"
         return pdf, filename
 
     async def run_xlsx(

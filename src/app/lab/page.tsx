@@ -73,6 +73,11 @@ export default function LabPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [signing, setSigning] = useState(false);
+  /** Tests switched off in the Control Center. The server refuses them; this only
+   *  keeps them out of the analyst's way instead of offering a form that will 403. */
+  const [disabledTests, setDisabledTests] = useState<string[]>([]);
+  /** Run one test on its own instead of the whole (scoped) battery. */
+  const [singleOnly, setSingleOnly] = useState(false);
 
   useEffect(() => {
     if (!ready) return;
@@ -139,18 +144,56 @@ export default function LabPage() {
     })();
   }, [ready, readThrough, setSource, lang, t]);
 
+  // Which tests are enabled is the server's answer, not a client opinion: the list is
+  // read once per visit and refreshed after a save, so a test disabled by QA in another
+  // session disappears here on the next load — and is refused by the API regardless.
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const statuses = await api.testStatuses();
+        if (cancelled) return;
+        setDisabledTests(statuses.items.filter((x) => !x.is_active).map((x) => x.test_code));
+      } catch {
+        /* a status read failure must not block the laboratory screen */
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [ready]);
+
   const instrument = instruments.find((i) => i.id === selectedInstrument) ?? null;
   const canRun = can('calibration.run');
   const canExport = can('reports.export');
 
-  /** Break-down mode restricts the required scope to the mandatory retest matrix. */
+  /**
+   * The tests this run will execute.
+   *
+   * Three filters, in order: the break-down retest matrix (when the run is a
+   * post-breakdown retest), the Control Center lifecycle flag, and — when single-test
+   * mode is on — the one test the analyst is working on. A disabled test is removed
+   * here *and* refused by the server, so this list is convenience, not the control.
+   */
   const scopedTests: TestSpec[] = useMemo(() => {
-    if (runType !== 'POST_BREAKDOWN') return TESTS;
-    const required = testsForComponent(component);
-    return TESTS.filter((x) => required.includes(x.code) || x.code === 'T01');
-  }, [runType, component]);
+    const enabled = TESTS.filter((x) => !disabledTests.includes(x.code));
+    const breakdown =
+      runType === 'POST_BREAKDOWN'
+        ? (() => {
+            const required = testsForComponent(component);
+            return enabled.filter((x) => required.includes(x.code) || x.code === 'T01');
+          })()
+        : enabled;
+    if (singleOnly) {
+      const only = breakdown.find((x) => x.code === activeTest);
+      return only ? [only] : [];
+    }
+    return breakdown;
+  }, [runType, component, disabledTests, singleOnly, activeTest]);
 
   const activeSpec = TESTS.find((x) => x.code === activeTest)!;
+  const activeDisabled = disabledTests.includes(activeSpec.code);
 
   const setField = (testCode: string, key: string, value: unknown) => {
     setInputs((prev) => ({ ...prev, [testCode]: { ...(prev[testCode] ?? {}), [key]: value } }));
@@ -276,7 +319,13 @@ export default function LabPage() {
         scopedInputs[test.code] = cleaned;
       }
 
-      const executed = await api.executeRun(created.id, scopedInputs);
+      // The scope is named explicitly, always: in single-test mode it is exactly one
+      // code, so the server can neither infer nor execute anything else.
+      const executed = await api.executeRun(
+        created.id,
+        scopedInputs,
+        scopedTests.map((x) => x.code),
+      );
       setServerRun(executed.run);
       setConfirmOpen(false);
 
@@ -386,6 +435,33 @@ export default function LabPage() {
    * certificate fingerprint; the XLSX exports raw inputs, verdicts, limits and the
    * run's own audit trail.
    */
+  /**
+   * Print the certificate for one test.
+   *
+   * The document is rendered by the server from the stored run (never from screen
+   * state), and the server decides whether it may be issued at all: the run must be
+   * approved and locked, and the test must have passed.
+   */
+  const downloadPerTestCertificate = async (testCode: string) => {
+    if (!serverRun) {
+      notify('warn', t('لا يوجد تشغيل محفوظ', 'No stored run yet'), t('احفظ التشغيل أولاً.', 'Save the run first.'));
+      return;
+    }
+    try {
+      await downloadReport(
+        `/reports/runs/${serverRun.id}/tests/${testCode}/certificate.pdf`,
+        `${serverRun.execution_code}-${testCode}-certificate.pdf`,
+      );
+      notify('success', t('صدرت شهادة الاختبار', 'Test certificate issued'), `${testCode} · PDF`);
+    } catch (error) {
+      notify(
+        'error',
+        t('تعذر إصدار شهادة الاختبار', 'Test certificate not issued'),
+        error instanceof ApiError ? error.text(lang) : String(error),
+      );
+    }
+  };
+
   const downloadReportFile = async (kind: 'certificate.pdf' | 'data.xlsx') => {
     if (!serverRun) return;
     try {
@@ -496,7 +572,7 @@ export default function LabPage() {
         {/* test navigator */}
         <Card title={t('اختبارات البروتوكول', 'Protocol tests')} subtitle={t(`${scopedTests.length} اختباراً في النطاق`, `${scopedTests.length} tests in scope`)} dense>
           <ul className="max-h-[520px] overflow-y-auto">
-            {TESTS.map((test) => {
+            {TESTS.filter((test) => !disabledTests.includes(test.code)).map((test) => {
               const inScope = scopedTests.some((x) => x.code === test.code);
               const res = result?.perTest[test.code];
               const filled = test.fields.filter((f) => {
@@ -541,22 +617,64 @@ export default function LabPage() {
             title={`${activeSpec.code} · ${lang === 'ar' ? activeSpec.nameAr : activeSpec.nameEn}`}
             subtitle={activeSpec.standard}
             actions={
-              <button
-                className="btn btn-ghost px-2 py-1 text-[11px]"
-                onClick={() => setInputs((p) => ({ ...p, [activeSpec.code]: {} }))}
-                title={t('تفريغ حقول الاختبار', 'Clear test fields')}
-              >
-                <RotateCcw size={12} /> {t('تفريغ', 'Clear')}
-              </button>
+              <div className="flex items-center gap-1.5">
+                {activeDisabled && (
+                  <span
+                    className="chip"
+                    style={{ background: 'rgba(180,35,24,.12)', color: 'var(--fail)' }}
+                    title="Disabled in the Control Center — the server refuses to execute it"
+                  >
+                    <AlertTriangle size={11} /> disabled
+                  </span>
+                )}
+                <button
+                  className="btn btn-ghost px-2 py-1 text-[11px]"
+                  onClick={() => downloadPerTestCertificate(activeSpec.code)}
+                  disabled={!serverRun?.is_locked || !canExport || result?.perTest[activeSpec.code]?.status !== 'PASS'}
+                  title={t(
+                    'شهادة معايرة لهذا الاختبار فقط — تُصدر بعد اعتماد التشغيل',
+                    'Calibration certificate for this test only — issued after run approval',
+                  )}
+                >
+                  <Download size={12} /> {t('شهادة الاختبار', 'Test certificate')}
+                </button>
+                <button
+                  className="btn btn-ghost px-2 py-1 text-[11px]"
+                  onClick={() => setInputs((p) => ({ ...p, [activeSpec.code]: {} }))}
+                  title={t('تفريغ حقول الاختبار', 'Clear test fields')}
+                >
+                  <RotateCcw size={12} /> {t('تفريغ', 'Clear')}
+                </button>
+              </div>
             }
           >
-            <details className="mb-3 rounded-lg px-3 py-2" style={{ background: 'var(--surface-2)' }}>
+            {/*
+              The documented procedure is printed in English only, and always left-to-right:
+              the steps are quoted from USP / Ph. Eur. / ISO 17025 and are read as the
+              source document reads. The Arabic text is kept in the database as the
+              translation of record; it is not interleaved with the English steps.
+            */}
+            <details
+              className="mb-3 rounded-lg px-3 py-2"
+              style={{ background: 'var(--surface-2)' }}
+              open
+            >
               <summary className="cursor-pointer text-[11.5px] font-bold" style={{ color: 'var(--brand)' }}>
-                {t('خطوات التنفيذ الموثقة', 'Documented procedure')}
+                Documented procedure
+                <span className="ms-2 font-mono text-[10px] font-normal" style={{ color: 'var(--text-muted)' }}>
+                  {activeSpec.standard}
+                </span>
               </summary>
-              <ol className="mt-2 list-inside list-decimal space-y-1 text-[11.5px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
-                {activeSpec.procedureAr.map((p, i) => (
-                  <li key={i}>{lang === 'ar' ? p : p}</li>
+              <ol
+                dir="ltr"
+                lang="en"
+                className="mt-2 list-inside list-decimal space-y-1 text-[11.5px] leading-relaxed"
+                style={{ color: 'var(--text-muted)', textAlign: 'left' }}
+              >
+                {activeSpec.procedureEn.map((step, i) => (
+                  <li key={i} style={{ textAlign: 'left' }}>
+                    {step}
+                  </li>
                 ))}
               </ol>
             </details>
@@ -686,6 +804,28 @@ export default function LabPage() {
           )}
         </div>
         <Toolbar>
+          {/*
+            Single-test mode: the analyst runs (and later certifies) one test without the
+            other nineteen. The scope sent to the server is exactly one code, so nothing
+            else is executed or recorded.
+          */}
+          <label
+            className="flex cursor-pointer select-none items-center gap-1.5 rounded-md px-2 py-1 text-[11px]"
+            style={{ background: singleOnly ? 'var(--brand-soft)' : 'transparent', color: 'var(--text-muted)' }}
+            title={t(
+              'تشغيل الاختبار المعروض فقط بدل كامل مجموعة الاختبارات',
+              'Run only the test on screen instead of the whole battery',
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={singleOnly}
+              onChange={(e) => setSingleOnly(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--brand)]"
+            />
+            {t('اختبار واحد فقط', 'Single test only')}
+            {singleOnly && <b className="font-mono">{activeSpec.code}</b>}
+          </label>
           {savedRun && (
             <span className="chip" style={{ background: 'rgba(22,121,79,.12)', color: 'var(--pass)' }}>
               <BadgeCheck size={12} /> {savedRun.executionCode}
@@ -722,7 +862,12 @@ export default function LabPage() {
             </button>
           )}
           <button className="btn btn-primary" onClick={handleRun} disabled={running || !instrument}>
-            <Play size={14} /> {running ? t('جارٍ الحساب…', 'Computing…') : t('Run Calibration', 'Run Calibration')}
+            <Play size={14} />{' '}
+            {running
+              ? t('جارٍ الحساب…', 'Computing…')
+              : singleOnly
+                ? t(`تشغيل ${activeSpec.code}`, `Run ${activeSpec.code}`)
+                : t('Run Calibration', 'Run Calibration')}
           </button>
         </Toolbar>
       </div>

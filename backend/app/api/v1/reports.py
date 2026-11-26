@@ -44,6 +44,25 @@ async def certificate(
     return _download(pdf, filename, "application/pdf")
 
 
+@router.get(
+    "/runs/{run_id}/tests/{test_code}/certificate.pdf",
+    summary="شهادة معايرة لاختبار واحد (PDF)",
+)
+async def test_certificate(
+    run_id: uuid.UUID,
+    test_code: str,
+    request: Request,
+    session: SessionDep,
+    principal: PrincipalDep,
+):
+    """One test, one document — same letterhead, same gate as the run certificate."""
+    pdf, filename = await ExportService(session).test_certificate_pdf(
+        run_id=run_id, test_code=test_code.upper(), principal=principal, ip=client_ip(request)
+    )
+    await session.commit()
+    return _download(pdf, filename, "application/pdf")
+
+
 @router.get("/runs/{run_id}/data.xlsx", summary="بيانات التشغيل (Excel)")
 async def run_xlsx(
     run_id: uuid.UUID, request: Request, session: SessionDep, principal: PrincipalDep

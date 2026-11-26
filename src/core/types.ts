@@ -87,6 +87,8 @@ export interface TestSpec {
     | 'SYSTEM';
   standard: string;
   procedureAr: string[];
+  /** Documented procedure in English (USP/ISO 17025 wording) — printed dir="ltr". */
+  procedureEn: string[];
   fields: FieldSpec[];
   formulas: FormulaSpec[];
   metrics: string[]; // metric keys evaluated against limits

@@ -24,6 +24,10 @@ PERMISSIONS: Final[tuple[str, ...]] = (
     "limits.manage",
     "limits.approve",
     "formulas.manage",
+    # Enabling/disabling a test in the field is a governance decision, not an editing
+    # one: it changes what the laboratory is allowed to execute, so it is separated
+    # from limits.manage and audited on its own.
+    "tests.manage_status",
     "reports.export",
     "audit.view",
     "settings.manage",
@@ -46,6 +50,7 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "instruments.delete",
         "limits.manage",
         "formulas.manage",
+        "tests.manage_status",
         "reports.export",
         "audit.view",
         "settings.manage",

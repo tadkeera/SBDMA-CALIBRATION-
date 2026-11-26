@@ -71,6 +71,14 @@ export const TESTS: TestSpec[] = [
       'تأكد أن تقلب حرارة الغرفة أقل من ±1°C، ثم اضغط Start وانتظر انتهاء الدورة.',
       'اضغط [Logged] لحفظ النتائج في Validation Log، ثم أدخل القيم الظاهرة في هذه الشاشة.',
     ],
+    procedureEn: [
+      'From the instrument keypad select Menu → Maintenance → Validation → Auto Validation, then choose the GRAD. mode and the flow-channel pairs A/B, A/C and A/D.',
+      'Install the restrictor tube (Shimadzu P/N 228-38994) in the column oven in place of the analytical column; the auto-validation routine requires a defined back-pressure.',
+      'Place caffeine solution 10 mg/L in reservoir A and HPLC-grade water in reservoirs B, C and D, and fill the wash port with the same water.',
+      'Verify that ambient-temperature variation during the run is less than ±1 °C, press Start, and allow the complete validation cycle to finish without interruption.',
+      'Press [Logged] to commit the results to the validation log, print the log page, and transcribe the displayed values into the fields on this screen.',
+      'Attach the validation-log printout to the run record; the transcribed values must be traceable to the instrument\'s own log, never re-keyed from memory.',
+    ],
     fields: [
       { key: 'wavelength_dev', labelAr: 'انحراف الطول الموجي (هولميوم/D2)', labelEn: 'Wavelength deviation', type: 'number', unit: 'nm' },
       { key: 'd2_energy', labelAr: 'طاقة لمبة D2 عند 220 nm', labelEn: 'D2 lamp energy @220 nm', type: 'number', unit: 'mV' },
@@ -110,6 +118,14 @@ export const TESTS: TestSpec[] = [
       'أدخل السرعات المضبوطة (1.0, 1.5, 2.0) والحجم المجمع (10.0, 10.0, 10.0) والأزمنة المقاسة بالثواني.',
       'حد القبول المعتمد: يجب ألا يتجاوز الخطأ ±1.0% عند أي سرعة.',
     ],
+    procedureEn: [
+      'Set the pump to each specified flow rate (1.0, 1.5 and 2.0 mL/min) and allow the system to equilibrate for at least 10 minutes at each setting with water as the mobile phase.',
+      'Weigh a clean, dry 10 mL volumetric flask to 0.1 mg on a calibrated analytical balance and record the mass W1.',
+      'Start the pump at the set flow rate, simultaneously start a calibrated stopwatch, and collect the eluate directly into the flask for the measured collection time.',
+      'Stop the pump and the timer together, then re-weigh the flask to 0.1 mg and record W2. Convert the collected mass to volume using the water density at the recorded ambient temperature.',
+      'Repeat steps 2 to 4 for each flow rate, entering the set flow, the collected volume and the measured time for every replicate.',
+      'Calculate the actual flow and the percentage error for each setting; the largest absolute error across the three settings is the reported result.',
+    ],
     fields: [
       { key: 'set_flow', labelAr: 'معدلات التدفق المضبوطة', labelEn: 'Set flow rates', type: 'series', unit: 'mL/min', length: 3, hintAr: 'القيم المعتمدة: 1.0, 1.5, 2.0' },
       { key: 'collected_vol', labelAr: 'الحجم المجمع', labelEn: 'Collected volume', type: 'series', unit: 'mL', length: 3, hintAr: 'الحجم القياسي: 10.0, 10.0, 10.0' },
@@ -135,6 +151,13 @@ export const TESTS: TestSpec[] = [
       'ضخ ماء HPLC بمعدل 1.0 mL/min عند 40°C عبر أنبوب المقاومة (~10 MPa) وراقب تذبذب الضغط لمدة دقيقة واحدة.',
       'نفّذ اختبار محددات الضغط (Pressure Limiter) للحد الأعلى (X+1 MPa) والأدنى (X-1 MPa) وتأكد من إيقاف الضخ تلقائياً.',
     ],
+    procedureEn: [
+      'Equilibrate the pump at 1.0 mL/min with degassed water for 15 minutes and confirm a stable baseline pressure.',
+      'Read the pressure pulsation amplitude from the instrument\'s pump monitor over a 5-minute window and record the maximum peak-to-peak value in MPa.',
+      'Activate the upper pressure limiter and confirm that the pump stops or enters the error state at the configured limit; record PASS when the interlocks respond as designed.',
+      'Activate the lower pressure limiter (leak/under-pressure detection) and confirm the same controlled response; record PASS accordingly.',
+      'Reset both limiters to their validated operating values and confirm the system returns to normal operation before releasing the instrument.',
+    ],
     fields: [
       { key: 'pulsation', labelAr: 'تذبذب الضغط (النبض)', labelEn: 'Pressure pulsation', type: 'number', unit: 'MPa' },
       { key: 'upper_limiter_pass', labelAr: 'نجاح محدد الضغط العلوي', labelEn: 'Upper pressure limiter', type: 'select', options: ['PASS', 'FAIL'] },
@@ -158,6 +181,13 @@ export const TESTS: TestSpec[] = [
       'ضع ماء HPLC في القنوات المرجعية ومحلول كافيين 10 mg/L (عند 272–273 nm) أو أسيتون 0.1–0.3% (عند 254–265 nm) في قنوات التدرج.',
       'شغّل خطوات التدرج عند 0%، 10%، 50%، 90%، 100% لكل زوج قنوات (A/B وA/C وA/D).',
       'أدخل ارتفاعات الدرجات المقاسة لكل مستوى لحساب النسب الفعلية والانحرافات تلقائياً.',
+    ],
+    procedureEn: [
+      'Configure the quaternary gradient with water as channel A and a 0.1 % acetone aqueous solution as the trace channel, and select the channel pair under test (A/B, A/C or A/D).',
+      'At 0 % trace channel, record the stable baseline absorbance height in mAU after equilibration.',
+      'Step the trace channel to 10 %, 50 % and 90 %, allowing full equilibration at each step, and record the absorbance height in mAU.',
+      'Step the trace channel to 100 % and record the plateau absorbance height.',
+      'Linearise the four response points against the nominal proportions and calculate the deviation at each level; the largest absolute deviation, in percentage points, is the reported result.',
     ],
     fields: [
       { key: 'channel_pair', labelAr: 'زوج القنوات المختبر', labelEn: 'Channel pair', type: 'select', options: ['A/B', 'A/C', 'A/D'] },
@@ -194,6 +224,13 @@ export const TESTS: TestSpec[] = [
       'ضع القارورة في الموقع 1 بالرف الأيسر ونفّذ 10 حقنات متتالية بحجم 50 µL.',
       'أعد وزن القارورة بدقة وسجل W2، ثم أدخل كثافة الماء عند حرارة الغرفة.',
     ],
+    procedureEn: [
+      'Fill the autosampler vial with HPLC-grade water and set the injection volume to 50 µL with the sample cooler at the validated temperature.',
+      'Weigh the vial, septa and cap assembly to 0.01 mg on a calibrated microbalance and record the pre-injection mass W1.',
+      'Program 10 consecutive injections and run them without interruption so that evaporation from the vial is kept constant across the series.',
+      'Remove the vial and re-weigh the assembly to 0.01 mg, recording the post-injection mass W2.',
+      'Calculate the delivered volume from the mass difference and the water density at ambient temperature, compare it with the nominal volume for the series, and report the absolute percentage accuracy.',
+    ],
     fields: [
       { key: 'w1', labelAr: 'وزن القارورة قبل الحقن (W1)', labelEn: 'Pre-injection weight (W1)', type: 'number', unit: 'g' },
       { key: 'w2', labelAr: 'وزن القارورة بعد الحقن (W2)', labelEn: 'Post-injection weight (W2)', type: 'number', unit: 'g' },
@@ -221,6 +258,13 @@ export const TESTS: TestSpec[] = [
       'استخدم محلول كافيين 20 mg/L عند 273 nm (أو 10 ppm وفق الطريقة).',
       'لخطية الحاقن: احقن 5 أحجام متصاعدة (مثل 2, 5, 10, 20, 50 µL) واحسب معامل التحديد R² لمساحة القمم مقابل الحجم.',
       'لتكرارية الحلقة: احقن 5 تكرارات لحجم ثابت واحسب %RSD لمساحات القمم.',
+    ],
+    procedureEn: [
+      'Prepare a caffeine standard solution and programme five injection volumes across the validated range (for example 5, 10, 15, 20 and 25 µL).',
+      'Inject each volume once and record the peak area for the linearity series.',
+      'Program five replicate injections at the nominal loop volume and record the peak areas for the loop-precision series.',
+      'Fit an ordinary least-squares line of peak area against injection volume and record the coefficient of determination R² and the slope.',
+      'Calculate the mean, standard deviation and relative standard deviation of the replicate areas; a %RSD above the SOP limit indicates loop or injector wear and the test fails.',
     ],
     fields: [
       { key: 'volumes', labelAr: 'أحجام الحقن المختبرة', labelEn: 'Injection volumes', type: 'series', unit: 'µL', length: 5, hintAr: 'مثلاً: 2, 5, 10, 20, 50' },
@@ -252,6 +296,13 @@ export const TESTS: TestSpec[] = [
       'اضبط المبرد على 4°C وانتظر الاستقرار لمدة ≥ 90 دقيقة (حرارة الغرفة ≤ 30°C).',
       'سجّل قراءة الحساس المرجعي الخام ومعامل تصحيح شهادة المعايرة.',
     ],
+    procedureEn: [
+      'Set the sample cooler to the validated operating temperature (4 °C) and allow at least 30 minutes for thermal equilibration.',
+      'Insert the calibrated reference thermometer into the cooler block next to the sample tray, applying the certificate correction offset for the reference thermometer.',
+      'Allow the reading to stabilise for 10 minutes and record the raw reference temperature.',
+      'Record the corrected reference temperature and compare it with the set temperature; the absolute difference is the reported result.',
+      'Verify that the cooler holds the set point for a further 15 minutes before returning the autosampler to routine use.',
+    ],
     fields: [
       { key: 't_set', labelAr: 'الحرارة المضبوطة', labelEn: 'Set temperature', type: 'number', unit: '°C', hintAr: 'القياسي: 4.0°C' },
       { key: 't_ref_raw', labelAr: 'قراءة الحساس المرجعي الخام', labelEn: 'Raw reference reading', type: 'number', unit: '°C' },
@@ -277,6 +328,13 @@ export const TESTS: TestSpec[] = [
       'ثبّت طرف الحساس الحراري المعاير على حامل العمود بشريط ألمنيوم بعرض 1 cm وأغلق الباب.',
       'اختبر نقاط الحرارة المعتمدة (مثل 25, 40, 50, 60°C أو 40, 50°C) وسجّل Set وDisplay وReference.',
       'سجّل التذبذب الحراري (Fluctuation) من الجهاز، ثم نفّذ اختبار حساس الغاز بحقن 100 µL إيثانول عند 50°C.',
+    ],
+    procedureEn: [
+      'Set the column oven to each validated temperature (for example 30, 40, 50 and 60 °C), allowing 20 minutes of equilibration at each set point.',
+      'At each set point record the temperature indicated by the instrument display and the temperature indicated by the calibrated reference thermometer placed in the oven\'s calibration port.',
+      'Apply the reference-thermometer correction offset and calculate the difference between the set temperature and the corrected reference, and between the display and the corrected reference.',
+      'Record the oven fluctuation (maximum deviation from the mean over a 10-minute window) at the nominal operating temperature.',
+      'Verify the gas-sensor response by confirming that the sensor reports a normal atmosphere and that no alarm is latched; record PASS or FAIL.',
     ],
     fields: [
       { key: 't_set', labelAr: 'درجات الحرارة المضبوطة', labelEn: 'Set temperatures', type: 'series', unit: '°C', length: 4, hintAr: 'مثلاً: 25, 40, 50, 60' },
@@ -307,6 +365,13 @@ export const TESTS: TestSpec[] = [
       'من Performance Check → Detector → Wavelength accuracy/Lamp energy: تحقق من طاقة اللمبة عند 220 nm (≥ 400 mV) وساعات التشغيل (≤ 2000 ساعة).',
       'تحقق من دقة الطول الموجي المدمجة عبر فلتر الهولميوم (~241 nm) وخط D2 عند 656.1 nm (±1.0 nm).',
       'نفّذ المسح الطيفي لمحلول كافيين 10 mg/L (200–280 nm بخطوة 1 nm) وسجّل القمتين (205 و273 nm) والقاع (245 nm).',
+    ],
+    procedureEn: [
+      'With the UV detector at 220 nm and the flow cell filled with HPLC-grade water, record the deuterium (D2) lamp energy in mV after 30 minutes of lamp warm-up.',
+      'Read the accumulated UV lamp hours from the detector\'s lamp-information screen.',
+      'Run the detector\'s built-in wavelength check (D2 line) and record the deviation reported by the instrument.',
+      'Scan a caffeine solution across 200–300 nm and record the wavelengths of the two maxima (approximately 205 nm and 273 nm) and of the minimum between them (approximately 245 nm).',
+      'Compare each observed wavelength with its reference value; the absolute deviation for each feature is evaluated against the acceptance limits.',
     ],
     fields: [
       { key: 'd2_energy', labelAr: 'طاقة لمبة D2 عند 220 nm', labelEn: 'D2 lamp energy @220 nm', type: 'number', unit: 'mV' },
@@ -341,6 +406,13 @@ export const TESTS: TestSpec[] = [
       'احقن 5 تراكيز كافيين (20, 30, 40, 50, 60 mg/L) عند 272–273 nm بحيث يكون أعلى ارتفاع قمة ≤ 1.5 AU.',
       'يُحسب تلقائياً معامل التحديد R² (حد iOQ الصارم ≥ 0.9990) وأقصى انحراف للحساسية النسبية (±5.0%).',
     ],
+    procedureEn: [
+      'Insert the holmium-oxide or neutral-density verification filter, or use the internal filter set, and record the absorbance deviation reported by the detector.',
+      'Prepare five caffeine calibration standards across the validated concentration range (for example 2, 5, 10, 20 and 50 mg/L).',
+      'Inject each standard and record the peak height in mAU.',
+      'Fit an ordinary least-squares line of peak height against concentration and record the coefficient of determination R².',
+      'Calculate the relative sensitivity (response factor) at each level and report the largest absolute deviation from the mean response factor as the linearity criterion.',
+    ],
     fields: [
       { key: 'absorbance_dev', labelAr: 'انحراف الامتصاصية بالفلتر', labelEn: 'Filter absorbance deviation', type: 'number', unit: '%' },
       { key: 'concs', labelAr: 'تراكيز محاليل الكافيين', labelEn: 'Caffeine concentrations', type: 'series', unit: 'mg/L', length: 5, hintAr: '20, 30, 40, 50, 60' },
@@ -368,6 +440,13 @@ export const TESTS: TestSpec[] = [
       'ركّب أنبوب المقاومة واضبط ماء HPLC منزوع الغاز عند 1.0 mL/min، حرارة الفرن والخلية 40°C، الطول الموجي 250 nm، زمن الاستجابة 2 ثانية.',
       'انتظر 60 دقيقة للاستقرار ثم سجّل خط الأساس لمدة 15 دقيقة لحساب متوسط الضجيج والانحراف الساعي.',
     ],
+    procedureEn: [
+      'Equilibrate the detector with mobile phase at 1.0 mL/min for 30 minutes at the validated wavelength, with the flow cell filled and the lamp warmed up.',
+      'Record the baseline noise over a 10-minute window at the instrument\'s standard noise integration interval, in mAU.',
+      'Record the baseline drift over a 60-minute window (short-term drift), expressed in mAU/h.',
+      'Evaluate both values against the approved limits for the adopted limit source; a drift failure usually indicates mobile-phase degassing, lamp ageing or thermal instability.',
+      'Re-run the measurement after correcting ambient conditions before issuing a failing verdict, and record both attempts in the run comments.',
+    ],
     fields: [
       { key: 'noise', labelAr: 'ضجيج خط الأساس (Noise)', labelEn: 'Baseline noise', type: 'number', unit: 'mAU' },
       { key: 'drift', labelAr: 'انحراف خط الأساس الساعي (Drift)', labelEn: 'Baseline drift', type: 'number', unit: 'mAU/h' },
@@ -391,6 +470,13 @@ export const TESTS: TestSpec[] = [
       'للتكرارية: احقن 6 حقنات متتالية من محلول الكافيين القياسي (20 mg/L) وسجّل أزمنة الاستبقاء RT ومساحات القمم.',
       'للترحيل المتبقي (Carryover): احقن محلول كافيين عالي التركيز (250 mg/L) متبوعاً مباشرة بحقنة Blank (ماء) وسجّل المساحتين.',
       'ملاحظة حسم التعارض: اعتُمد حد %RSD للمساحة ≤ 0.85% وفق USP <621> Table 2 (لـ n=6, B=2.0%) وحد RT ≤ 0.5% وفق شيمادزو.',
+    ],
+    procedureEn: [
+      'Prepare a suitability standard at a concentration giving a peak of adequate height (for example 250 mg/L caffeine) and equilibrate the system to a stable baseline.',
+      'Inject the standard six times consecutively and record the retention time and peak area of every injection.',
+      'Inject a blank (mobile phase) immediately after the sixth injection and record the largest peak area in the blank window.',
+      'Calculate the mean, standard deviation and %RSD for retention time and for peak area across the six injections.',
+      'Calculate carryover as the blank peak area expressed as a percentage of the high-standard peak area, and compare all three results with the approved limits.',
     ],
     fields: [
       { key: 'rt_values', labelAr: 'أزمنة الاستبقاء (6 حقنات)', labelEn: 'Retention times (6 injections)', type: 'series', unit: 'min', length: 6 },
@@ -420,6 +506,12 @@ export const TESTS: TestSpec[] = [
       'من Performance Check → Other → Leak Sensor: بلّل حساس كل وحدة (Detector, Pump, Autosampler HPV & LPV) بماء HPLC ونفّذ الفحص ثم جفّف الماء فوراً.',
       'عند تغيير الإبرة أو الرفوف: نفّذ Rack Setting وInjection Port Teaching.',
     ],
+    procedureEn: [
+      'Inspect the detector, pump, and autosampler high-pressure and low-pressure valve leak sensors for residual liquid, and dry any traces before testing.',
+      'Trigger each leak sensor in turn according to the service manual (simulated leak or sensor test function) and confirm that the instrument reports the alarm and stops the affected module.',
+      'Reset each alarm and confirm that the module returns to a ready state without a latched error.',
+      'Record PASS for each sensor that responded and FAIL for any sensor that did not; a failed leak sensor is a safety finding and the instrument must be taken out of service.',
+    ],
     fields: [
       { key: 'leak_detector', labelAr: 'حساس تسرب الكاشف', labelEn: 'Detector leak sensor', type: 'select', options: ['PASS', 'FAIL'] },
       { key: 'leak_pump', labelAr: 'حساس تسرب المضخة', labelEn: 'Pump leak sensor', type: 'select', options: ['PASS', 'FAIL'] },
@@ -444,6 +536,13 @@ export const TESTS: TestSpec[] = [
       'استخدم مادة مرجعية معتمدة CRM (مثل أكسيد الهولميوم أو خطوط D2) ضمن نطاق 200–400 nm.',
       'نفّذ 6 قياسات مكررة للطول الموجي وأدخل القيمة المرجعية للـ CRM والقياسات الستة.',
       'حدود USP <857> Table 1: الدقة ≤ 1.0 nm، والتكرارية (SD) ≤ 0.5 nm.',
+    ],
+    procedureEn: [
+      'Verify the wavelength scale in the ultraviolet region using a certified reference material (for example a holmium-oxide filter or a potassium dichromate solution) with a certified wavelength within 200–400 nm.',
+      'Record the certified wavelength of the reference material from its calibration certificate.',
+      'Perform six replicate wavelength determinations at the certified line and record each measured wavelength.',
+      'Calculate the mean measured wavelength, its absolute difference from the certified value (accuracy) and the standard deviation of the six replicates (repeatability).',
+      'Compare the accuracy and repeatability results with the USP <857> acceptance criteria adopted by the laboratory.',
     ],
     fields: [
       { key: 'crm_wavelength', labelAr: 'الطول الموجي المرجعي (CRM)', labelEn: 'CRM certified wavelength', type: 'number', unit: 'nm' },
@@ -470,6 +569,13 @@ export const TESTS: TestSpec[] = [
       'نفّذ 6 قياسات مكررة وأدخل القيمة المرجعية والقياسات الستة.',
       'حدود USP <857> Table 1: الدقة ≤ 2.0 nm، والتكرارية (SD) ≤ 0.5 nm.',
     ],
+    procedureEn: [
+      'Verify the wavelength scale in the visible region using a certified reference material with a certified line in 400–780 nm (for example a holmium-oxide filter at approximately 536 nm or 546 nm).',
+      'Record the certified wavelength of the reference material from its calibration certificate.',
+      'Perform six replicate wavelength determinations at the certified line and record each measured wavelength.',
+      'Calculate the mean measured wavelength, the absolute deviation from the certified value and the standard deviation of the replicates.',
+      'Compare the results with the visible-region acceptance criteria adopted from USP <857> Table 1.',
+    ],
     fields: [
       { key: 'crm_wavelength', labelAr: 'الطول الموجي المرجعي Vis (CRM)', labelEn: 'CRM certified wavelength (Vis)', type: 'number', unit: 'nm' },
       { key: 'measured_wavelengths', labelAr: 'الأطوال الموجية المقاسة (6 تكرارات)', labelEn: 'Measured wavelengths (6 replicates)', type: 'series', unit: 'nm', length: 6 },
@@ -494,6 +600,13 @@ export const TESTS: TestSpec[] = [
       'استخدم محلولاً مرجعياً معتمداً (مثل K2Cr2O7 أو Nicotinic Acid) بامتصاصية معتمدة أقل من 1.0 AU.',
       'سجّل 6 قراءات امتصاصية متكررة وأدخل القيمة المرجعية للـ CRM.',
       'حدود USP <857> Table 4: الدقة ≤ 0.010 AU، والتكرارية (SD) ≤ 0.005 AU.',
+    ],
+    procedureEn: [
+      'Select a certified reference material with a certified absorbance below 1.0 AU at the validated wavelength.',
+      'Record the certified absorbance value from the reference-material certificate.',
+      'Perform six replicate absorbance readings of the reference material after cell equilibration, and record every value.',
+      'Calculate the mean absorbance, the absolute deviation of the mean from the certified value, and the standard deviation of the replicates.',
+      'Compare the accuracy and repeatability results with the limits adopted from USP <857> Table 4 for the low-absorbance range.',
     ],
     fields: [
       { key: 'crm_abs', labelAr: 'الامتصاصية المرجعية المعتمدة (CRM)', labelEn: 'CRM certified absorbance', type: 'number', unit: 'AU' },
@@ -520,6 +633,13 @@ export const TESTS: TestSpec[] = [
       'سجّل 6 قراءات امتصاصية متكررة وأدخل القيمة المرجعية للـ CRM.',
       'حدود USP <857> Table 4: الدقة ≤ 1.0%، والتكرارية ≤ 0.50%.',
     ],
+    procedureEn: [
+      'Select a certified reference material with a certified absorbance above 1.0 AU at the validated wavelength.',
+      'Record the certified absorbance value from the reference-material certificate.',
+      'Perform six replicate absorbance readings after thermal and optical equilibration and record every value.',
+      'Calculate the mean absorbance, the relative accuracy error as a percentage of the certified value, and the repeatability as a percentage of the certified value.',
+      'Compare the percentage results with the limits adopted from USP <857> Table 4 for the high-absorbance range.',
+    ],
     fields: [
       { key: 'crm_abs', labelAr: 'الامتصاصية المرجعية المعتمدة (CRM)', labelEn: 'CRM certified absorbance', type: 'number', unit: 'AU' },
       { key: 'measured_abs', labelAr: 'قراءات الامتصاصية المقاسة (6 تكرارات)', labelEn: 'Measured absorbances (6 replicates)', type: 'series', unit: 'AU', length: 6 },
@@ -543,6 +663,12 @@ export const TESTS: TestSpec[] = [
     procedureAr: [
       'الإجراء A (مرشح القطع المزدوج): قس فرق الامتصاص ΔA بين خليتين بمسارين ضوئيين (10 mm و5 mm)؛ الحد ΔA ≥ 0.7 AU (ويكافئ S_λ ≤ 0.01).',
       'الإجراء B (مرشح القطع الفردي): قس أقصى امتصاص A_max لمحلول القطع القياسي (مثل KCl أو NaI)؛ الحد A_max ≥ 2.0 AU.',
+    ],
+    procedureEn: [
+      'Procedure A (absorbance ratio): measure the absorbance of the stray-light reference solution at the specified wavelength and calculate the absorbance difference ΔA against the reference blank.',
+      'Procedure B (maximum absorbance): measure the maximum absorbance A_max of the saturated reference solution at the specified wavelength.',
+      'Calculate the stray-light ratio S_λ from ΔA using the relationship adopted from USP <857>.',
+      'Compare ΔA, S_λ and A_max with the acceptance criteria; a stray-light ratio above 1 % invalidates measurements made at the high-absorbance end of the scale.',
     ],
     fields: [
       { key: 'delta_a', labelAr: 'فرق الامتصاص ΔA (إجراء A)', labelEn: 'Absorbance difference ΔA (Proc. A)', type: 'number', unit: 'AU' },
@@ -569,6 +695,12 @@ export const TESTS: TestSpec[] = [
       'قس الامتصاص عند القمة (~269 nm) وعند القاع (~266 nm) مقابل الهكسان كـ Blank.',
       'حد USP <857>: نسبة الامتصاص (A_269 / A_266) ≥ 1.3 لعرض نطاق طيفي SBW ≤ 2 nm.',
     ],
+    procedureEn: [
+      'Record the absorbance of the resolution reference solution at the wavelength of the peak maximum (approximately 269 nm).',
+      'Record the absorbance at the wavelength of the minimum between the two lines (approximately 266 nm).',
+      'Calculate the ratio of the peak absorbance to the minimum absorbance; this ratio is the spectral resolution criterion.',
+      'Compare the ratio with the minimum acceptable value adopted from USP <857>; a ratio below the limit means the spectral bandwidth is too wide for the intended assay.',
+    ],
     fields: [
       { key: 'abs_269', labelAr: 'الامتصاص عند القمة (~269 nm)', labelEn: 'Peak absorbance (~269 nm)', type: 'number', unit: 'AU' },
       { key: 'abs_266', labelAr: 'الامتصاص عند القاع (~266 nm)', labelEn: 'Minimum absorbance (~266 nm)', type: 'number', unit: 'AU' },
@@ -591,6 +723,13 @@ export const TESTS: TestSpec[] = [
       'قس ارتفاع القمة H عند حد التقدير الكمي (LOQ) وارتفاع ضجيج خط الأساس h في الـ Blank لحساب S/N = 2H/h (≥ 10.0).',
       'قس عرض القمة عند 5% من ارتفاعها (W_0.05) والمسافة الأمامية (d) لحساب معامل التماثل A_s = W_0.05 / (2d) (بين 0.8 و1.8).',
       'سجّل أزمنة الاستبقاء (t_R1, t_R2) وعرض القمتين عند منتصف الارتفاع (W_h1, W_h2) لحساب عدد الصفائح النظرية N (≥ 2000) والدقة R_s (≥ 2.0).',
+    ],
+    procedureEn: [
+      'Prepare a system-suitability solution containing at least two components whose resolution is to be demonstrated, and equilibrate the system to a stable baseline.',
+      'Record the peak height of the analyte (H) and the peak-to-peak noise height of a blank injection (h) over the same integration interval, and calculate S/N = 2H/h.',
+      'Measure the peak width at 5 % height (W_0.05) and the leading half-width at 5 % height (d_leading), and calculate the symmetry factor A_s = W_0.05 / (2 · d_leading).',
+      'Record the retention times and the widths at half height of the two components and calculate the number of theoretical plates N and the resolution R_s.',
+      'Compare S/N, A_s, N and R_s with the system-suitability limits; the run is not valid for assay unless all four criteria are met.',
     ],
     fields: [
       { key: 'peak_height_h', labelAr: 'ارتفاع القمة (H)', labelEn: 'Peak height (H)', type: 'number', unit: 'mAU' },

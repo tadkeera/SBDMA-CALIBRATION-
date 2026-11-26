@@ -6,9 +6,9 @@
     "component": {
       "type": "application",
       "name": "sbdma-calibration-web",
-      "version": "2.1.0"
+      "version": "2.2.0"
     },
-    "timestamp": "2026-11-25T23:53:49Z"
+    "timestamp": "2026-11-26T18:31:01Z"
   },
   "components": [
     {
@@ -1650,5 +1650,5 @@
       "scope": "required"
     }
   ],
-  "serialNumber": "urn:uuid:9ef69349-be84-5175-adfe-a67b592965d1"
+  "serialNumber": "urn:uuid:9799fa0e-747b-5361-9f8d-5a88a2779ced"
 }

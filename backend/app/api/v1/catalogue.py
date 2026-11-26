@@ -25,6 +25,8 @@ from app.schemas.assets import (
     MaintenanceTicketOut,
     ProtocolOut,
     ReferenceEquipmentOut,
+    TestStatusOut,
+    TestStatusUpdate,
     ReferenceStandardOut,
     TestDefinitionOut,
 )
@@ -322,6 +324,15 @@ async def list_protocols(session: SessionDep, principal: PrincipalDep):
 
 @router.get("/protocols/{protocol_code}", summary="تفاصيل بروتوكول مع اختباراته وحدوده")
 async def get_protocol(protocol_code: str, session: SessionDep, principal: PrincipalDep):
+    """The protocol, its tests, limits and formulas.
+
+    A test that has been switched off is *not* returned to a caller who cannot manage
+    test status: the laboratory screen then has nothing to render for it, which is the
+    "disappears from the Laboratory page" requirement enforced at the read side. The
+    holder of ``tests.manage_status`` still sees it, flagged ``is_active: false``, so
+    that it can be switched back on. Execution is refused separately in the run service
+    — hiding a row is never the only defence.
+    """
     principal.require("instruments.view")
     protocol = (
         await session.execute(
@@ -334,7 +345,12 @@ async def get_protocol(protocol_code: str, session: SessionDep, principal: Princ
     if protocol is None:
         raise NotFoundError(message_ar="البروتوكول غير موجود", message_en="Protocol not found")
     await session.refresh(protocol, attribute_names=["tests"])
-    tests = sorted(protocol.tests, key=lambda t: t.sequence_order)
+    sees_disabled = principal.has("tests.manage_status")
+    tests = [
+        t
+        for t in sorted(protocol.tests, key=lambda t: t.sequence_order)
+        if t.is_active or sees_disabled
+    ]
     return ok(
         {
             "id": str(protocol.id),
@@ -353,9 +369,12 @@ async def get_protocol(protocol_code: str, session: SessionDep, principal: Princ
                     name_en=t.name_en,
                     standard_ref=t.standard_ref,
                     procedure_ar=t.procedure_ar,
+                    procedure_en=t.procedure_en,
                     input_schema_jsonb=t.input_schema_jsonb,
                     chart_config_jsonb=t.chart_config_jsonb,
                     is_mandatory=t.is_mandatory,
+                    is_active=t.is_active,
+                    reference_jsonb=t.reference_jsonb,
                     limits=[
                         LimitOut(
                             id=lim.id,
@@ -387,6 +406,159 @@ async def get_protocol(protocol_code: str, session: SessionDep, principal: Princ
                 ).model_dump(mode="json")
                 for t in tests
             ],
+        }
+    )
+
+
+# ────────────────────────── test lifecycle (status) ────────────────────────── #
+
+
+async def _active_protocol(session, protocol_code: str | None = None) -> CalibrationProtocol:
+    """The newest version of the protocol under management (the LC-2050C by default)."""
+    from app.domain.protocol.blueprint import PROTOCOL_CODE
+
+    code = protocol_code or PROTOCOL_CODE
+    protocol = (
+        await session.execute(
+            select(CalibrationProtocol)
+            .where(CalibrationProtocol.protocol_code == code)
+            .order_by(CalibrationProtocol.version.desc())
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if protocol is None:  # pragma: no cover - the seed guarantees it
+        raise NotFoundError(message_ar="البروتوكول غير موجود", message_en="Protocol not found")
+    return protocol
+
+
+@router.get("/tests", summary="حالة تفعيل الاختبارات العشرين")
+async def list_test_statuses(session: SessionDep, principal: PrincipalDep):
+    """Every test with its lifecycle flag — the Control Center's management grid.
+
+    Readable by anyone who may view instruments, because knowing which tests are in
+    routine use is operational information; only changing the flag needs the extra
+    permission.
+    """
+    principal.require("instruments.view")
+    protocol = await _active_protocol(session)
+    rows = (
+        await session.execute(
+            select(TestDefinition)
+            .where(TestDefinition.protocol_id == protocol.id)
+            .order_by(TestDefinition.sequence_order)
+        )
+    ).scalars().all()
+    limit_counts = {
+        tid: count
+        for tid, count in (
+            await session.execute(
+                select(AcceptanceLimit.test_definition_id, func.count())
+                .where(AcceptanceLimit.test_definition_id.in_([r.id for r in rows]))
+                .group_by(AcceptanceLimit.test_definition_id)
+            )
+        ).all()
+    }
+    items = [
+        TestStatusOut(
+            test_code=r.test_code,
+            name_ar=r.name_ar,
+            name_en=r.name_en,
+            module=r.module,
+            sequence_order=r.sequence_order,
+            standard_ref=r.standard_ref,
+            is_active=r.is_active,
+            is_mandatory=r.is_mandatory,
+            limits_count=int(limit_counts.get(r.id, 0)),
+            updated_at=r.updated_at,
+        ).model_dump(mode="json")
+        for r in rows
+    ]
+    return ok(
+        {
+            "items": items,
+            "can_manage": principal.has("tests.manage_status"),
+            "protocol_code": protocol.protocol_code,
+            "enabled": sum(1 for r in rows if r.is_active),
+            "total": len(rows),
+        }
+    )
+
+
+@router.patch("/tests/{test_code}/status", summary="تفعيل/تعطيل اختبار مع تدقيق")
+async def set_test_status(
+    test_code: str,
+    payload: TestStatusUpdate,
+    request: Request,
+    session: SessionDep,
+    principal: PrincipalDep,
+):
+    """Switch a single test on or off.
+
+    * permission: ``tests.manage_status`` (server-side, never the UI);
+    * the change is written to the hash-chained audit trail with before/after values and
+      the stated reason, in the same transaction as the update;
+    * disabling is refused when it would leave the protocol with no executable test,
+      because a laboratory that cannot run anything is not a valid configuration.
+    """
+    principal.require("tests.manage_status")
+    protocol = await _active_protocol(session)
+    test = (
+        await session.execute(
+            select(TestDefinition).where(
+                TestDefinition.protocol_id == protocol.id,
+                TestDefinition.test_code == test_code,
+            )
+        )
+    ).scalar_one_or_none()
+    if test is None:
+        raise NotFoundError(
+            message_ar=f"الاختبار {test_code} غير موجود",
+            message_en=f"Test {test_code} not found",
+        )
+
+    if not payload.is_active and test.is_active:
+        remaining = (
+            await session.execute(
+                select(func.count())
+                .select_from(TestDefinition)
+                .where(
+                    TestDefinition.protocol_id == protocol.id,
+                    TestDefinition.is_active.is_(True),
+                    TestDefinition.id != test.id,
+                )
+            )
+        ).scalar_one()
+        if not remaining:
+            raise ValidationFailedError(
+                message_ar="لا يمكن تعطيل الاختبار الأخير المفعّل في البروتوكول",
+                message_en="The last enabled test of a protocol cannot be disabled",
+            )
+
+    before = {"is_active": test.is_active}
+    test.is_active = payload.is_active
+    await AuditService(session).record(
+        action="TEST_STATUS_CHANGED",
+        entity_type="test_definition",
+        entity_id=test.id,
+        actor_label=principal.username,
+        actor_id=principal.user_id,
+        role_label=principal.primary_role,
+        old_values=before,
+        new_values={
+            "is_active": test.is_active,
+            "test_code": test.test_code,
+            "protocol_code": protocol.protocol_code,
+            "protocol_version": protocol.version,
+        },
+        reason=payload.reason,
+        ip_address=client_ip(request),
+    )
+    await session.commit()
+    return ok(
+        {
+            "test_code": test.test_code,
+            "is_active": test.is_active,
+            "audit_action": "TEST_STATUS_CHANGED",
         }
     )
 

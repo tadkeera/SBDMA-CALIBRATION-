@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
+  BookOpen,
   Building2,
   Database,
   FlaskConical,
   PlusCircle,
+  Power,
   RefreshCw,
   ShieldCheck,
   Users,
@@ -13,6 +15,8 @@ import {
 } from 'lucide-react';
 import { useApp } from '@/components/AppProvider';
 import { Card, EmptyState, Field, Metric, Modal, Skeleton, StatusChip, Toolbar } from '@/components/ui';
+import { ReferenceManual } from '@/components/ReferenceManual';
+import { TestStatusPanel } from '@/components/TestStatusPanel';
 import { appendAudit, db, exportDatabase } from '@/core/db/database';
 import { resetDatabase } from '@/core/db/seed';
 import { LIMITS, TESTS } from '@/core/protocol';
@@ -28,7 +32,7 @@ import {
   type UserAccount,
 } from '@/core/types';
 
-type Tab = 'users' | 'instruments' | 'refs' | 'protocol' | 'system';
+type Tab = 'instruments' | 'refs' | 'users' | 'tests' | 'manual' | 'protocol' | 'system';
 
 export default function ControlPage() {
   const { t, lang, ready, user, notify, session, setLang, setTheme, theme } = useApp();
@@ -167,6 +171,8 @@ export default function ControlPage() {
             { k: 'instruments', ar: 'سجل الأجهزة', en: 'Instruments', icon: FlaskConical },
             { k: 'refs', ar: 'الأدوات المرجعية', en: 'Reference equipment', icon: Wrench },
             { k: 'users', ar: 'المستخدمون والصلاحيات', en: 'Users & RBAC', icon: Users },
+            { k: 'tests', ar: 'حالة الاختبارات', en: 'Test status', icon: Power },
+            { k: 'manual', ar: 'الدليل المرجعي', en: 'Reference Manual', icon: BookOpen },
             { k: 'protocol', ar: 'البروتوكول والحدود', en: 'Protocol & limits', icon: ShieldCheck },
             { k: 'system', ar: 'النظام والبيانات', en: 'System & data', icon: Database },
           ] as { k: Tab; ar: string; en: string; icon: typeof FlaskConical }[]
@@ -358,6 +364,10 @@ export default function ControlPage() {
           </Card>
         </div>
       )}
+
+      {tab === 'tests' && <TestStatusPanel />}
+
+      {tab === 'manual' && <ReferenceManual />}
 
       {tab === 'protocol' && (
         <div className="space-y-3">

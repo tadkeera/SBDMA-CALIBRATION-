@@ -15,6 +15,7 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    true,
 )
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -73,6 +74,17 @@ class TestDefinition(Base, UUIDPrimaryKey, Timestamped):
     input_schema_jsonb: Mapped[dict | None] = jsonb_column()
     chart_config_jsonb: Mapped[dict | None] = jsonb_column()
     is_mandatory: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+
+    # Lifecycle switch, governed by tests.manage_status. A disabled test is still the
+    # same row — runs that already reference it keep their meaning — but it is hidden
+    # from the laboratory screen and the server refuses to execute it. Default true so
+    # the migration is a no-op for the 20 tests already in production.
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False, server_default=true(), index=True
+    )
+    # Reference-manual content (overview, ideal readings, evaluation notes, sources).
+    # Documentation only: nothing here can influence a verdict.
+    reference_jsonb: Mapped[dict | None] = jsonb_column()
 
     protocol: Mapped[CalibrationProtocol] = relationship(back_populates="tests")
     limits: Mapped[list["AcceptanceLimit"]] = relationship(

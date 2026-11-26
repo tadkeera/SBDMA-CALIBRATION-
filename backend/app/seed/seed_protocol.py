@@ -13,6 +13,7 @@ from dataclasses import asdict
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.domain.protocol.reference_manual import MANUAL, PROCEDURES_EN
 from app.domain.protocol.blueprint import (
     LIMITS,
     PROTOCOL_CODE,
@@ -31,6 +32,52 @@ from app.models.protocol import (
 INSTRUMENT_CATEGORY = "HPLC-UV"
 
 
+def documentation_payload(code: str) -> dict:
+    """The documentary half of a test definition: English steps + manual entry.
+
+    Kept as one function so the seed, the documentation sync and the API all agree on
+    the shape that gets stored. Nothing in the payload is measurement data.
+    """
+    entry = MANUAL[code]
+    return {
+        "overview_en": entry.overview_en,
+        "ideal_readings": [
+            {"field": row.field, "value": row.value, "note_en": row.note_en}
+            for row in entry.ideal_readings
+        ],
+        "evaluation": [{"metric": key, "text_en": text} for key, text in entry.evaluation_en],
+        "references": list(entry.references),
+        "limit_notes": list(entry.limit_notes),
+    }
+
+
+async def sync_test_documentation(session: AsyncSession) -> dict[str, int]:
+    """Fill in documentation columns that are missing, and never overwrite them.
+
+    The protocol rows in a live deployment were seeded when ``procedure_en`` and
+    ``reference_jsonb`` did not exist. Those columns are documentary — no limit, formula
+    or run depends on them — so writing them in place is safe and avoids publishing a
+    duplicate protocol version that would fragment run history. The rule is *fill a null,
+    never clobber*: if an administrator has already curated a text, the seed leaves it
+    alone. Idempotent: a second call reports zeros.
+    """
+    filled = {"procedure_en": 0, "reference": 0}
+    rows = (
+        await session.execute(
+            select(TestDefinition).where(TestDefinition.test_code.in_(list(MANUAL)))
+        )
+    ).scalars().all()
+    for row in rows:
+        if not row.procedure_en and row.test_code in PROCEDURES_EN:
+            row.procedure_en = list(PROCEDURES_EN[row.test_code])
+            filled["procedure_en"] += 1
+        if not row.reference_jsonb and row.test_code in MANUAL:
+            row.reference_jsonb = documentation_payload(row.test_code)
+            filled["reference"] += 1
+    await session.flush()
+    return filled
+
+
 async def seed_protocol(session: AsyncSession) -> dict[str, int]:
     created = {"protocol": 0, "tests": 0, "limits": 0, "formulas": 0}
 
@@ -43,7 +90,9 @@ async def seed_protocol(session: AsyncSession) -> dict[str, int]:
         )
     ).scalar_one_or_none()
     if existing is not None:
-        return created | {"skipped": 1}  # idempotent
+        # The protocol exists: still heal the documentation columns, because a release
+        # that adds a documented procedure must reach a database that is already seeded.
+        return created | {"skipped": 1} | await sync_test_documentation(session)
 
     protocol = CalibrationProtocol(
         id=uuid.uuid4(),
@@ -75,7 +124,8 @@ async def seed_protocol(session: AsyncSession) -> dict[str, int]:
             name_en=spec.name_en,
             standard_ref=spec.standard,
             procedure_ar=list(spec.procedure_ar),
-            procedure_en=None,
+            procedure_en=list(PROCEDURES_EN[spec.code]) if spec.code in PROCEDURES_EN else None,
+            reference_jsonb=documentation_payload(spec.code) if spec.code in MANUAL else None,
             input_schema_jsonb={
                 "fields": [asdict(f) | {"options": list(f.options) if f.options else None} for f in spec.fields],
                 "metrics": list(spec.metrics),
@@ -127,4 +177,4 @@ async def seed_protocol(session: AsyncSession) -> dict[str, int]:
         created["limits"] += 1
 
     await session.flush()
-    return created
+    return created | await sync_test_documentation(session)

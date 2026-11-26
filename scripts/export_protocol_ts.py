@@ -25,6 +25,7 @@ OUTPUT = REPO_ROOT / "src" / "core" / "protocol.ts"
 
 sys.path.insert(0, str(BACKEND))
 
+from app.domain.protocol.reference_manual import PROCEDURES_EN  # noqa: E402
 from app.domain.protocol.blueprint import (  # noqa: E402
     BREAKDOWN_MATRIX,
     LIMITS,
@@ -143,6 +144,11 @@ def _formula_ts(formula) -> str:
 
 def _test_ts(test) -> str:
     procedures = "\n".join(f"      {_q(line)}," for line in test.procedure_ar)
+    # The documented procedure in English lives in the reference data module, not inline
+    # in a component: the laboratory screen prints exactly these steps, and the parity
+    # test proves the printed text is the shipped text.
+    english = PROCEDURES_EN.get(test.code, ())
+    procedures_en = "\n".join(f"      {_q(line)}," for line in english)
     fields = "\n".join(f"      {_field_ts(field)}," for field in test.fields)
     formulas = "\n".join(f"      {_formula_ts(formula)}," for formula in test.formulas)
     metrics = ", ".join(_q(metric) for metric in test.metrics)
@@ -155,6 +161,9 @@ def _test_ts(test) -> str:
     standard: {_q(test.standard)},
     procedureAr: [
 {procedures}
+    ],
+    procedureEn: [
+{procedures_en}
     ],
     fields: [
 {fields}
