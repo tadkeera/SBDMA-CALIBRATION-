@@ -89,6 +89,39 @@ async def db_probe():
             report["engine"]["query"] = str(result.scalar_one())
     except Exception as exc:  # noqa: BLE001
         report["engine"]["pooled_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
+
+    # same engine, without the checkout ping, so the connection can be inspected first
+    from sqlalchemy.ext.asyncio import create_async_engine
+
+    fresh = create_async_engine(engine.url, connect_args=_connect_args, pool_pre_ping=False)
+    try:
+        async with fresh.connect() as probe_conn:
+            raw = probe_conn.sync_connection.connection
+            driver = raw.dbapi_connection
+            adapted = getattr(driver, "_connection", None)
+            report["engine"]["fresh"] = {
+                "driver_type": type(driver).__name__,
+                "asyncpg_cache": (
+                    "none"
+                    if getattr(adapted, "_statement_cache", "absent") is None
+                    else type(getattr(adapted, "_statement_cache", None)).__name__
+                ),
+                "dialect_cache": (
+                    "none"
+                    if getattr(driver, "_prepared_statement_cache", "absent") is None
+                    else type(getattr(driver, "_prepared_statement_cache", None)).__name__
+                ),
+            }
+            rows = await probe_conn.exec_driver_sql(
+                "SELECT name FROM pg_prepared_statements ORDER BY name"
+            )
+            report["engine"]["fresh"]["server_prepared"] = [r[0] for r in rows][:10]
+            one = await probe_conn.exec_driver_sql("SELECT 1")
+            report["engine"]["fresh"]["query"] = str(one.scalar_one())
+    except Exception as exc:  # noqa: BLE001
+        report["engine"]["fresh_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
+    finally:
+        await fresh.dispose()
     return ok(report)
 
 
