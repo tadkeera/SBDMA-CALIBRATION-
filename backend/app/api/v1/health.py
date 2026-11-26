@@ -32,7 +32,11 @@ async def db_probe():
 
     from app.core.database import _connect_args, engine
 
+    import sqlalchemy
+
     report: dict = {
+        "asyncpg_version": asyncpg.__version__,
+        "sqlalchemy_version": sqlalchemy.__version__,
         "connect_arg_keys": sorted(_connect_args),
         "statement_cache_size": _connect_args.get("statement_cache_size"),
         "prepared_statement_cache_size": _connect_args.get("prepared_statement_cache_size"),
