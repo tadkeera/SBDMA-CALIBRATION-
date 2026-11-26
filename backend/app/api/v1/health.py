@@ -19,6 +19,52 @@ router = APIRouter(tags=["health"])
 settings = get_settings()
 
 
+@router.get("/health/db-probe", summary="تشخيص اتصال قاعدة البيانات")
+async def db_probe():
+    """What the *deployed* process actually does when it connects — no session used.
+
+    A pooler that refuses prepared statements fails identically to an outage, and no
+    shell exists on the platform to ask. This reports, without exposing a password or a
+    host: the connect arguments the engine was built with, and the outcome of connecting
+    the way the engine connects. Temporary: remove once the pooler behaviour is settled.
+    """
+    import asyncpg
+
+    from app.core.database import _connect_args, engine
+
+    report: dict = {
+        "connect_arg_keys": sorted(_connect_args),
+        "statement_cache_size": _connect_args.get("statement_cache_size"),
+        "prepared_statement_cache_size": _connect_args.get("prepared_statement_cache_size"),
+        "engine_pool": type(engine.pool).__name__,
+        "raw": {},
+    }
+    url = engine.url
+    try:
+        conn = await asyncpg.connect(
+            user=url.username,
+            password=url.password,
+            host=url.host,
+            port=url.port or 5432,
+            database=url.database,
+            ssl=_connect_args.get("ssl") or None,
+            statement_cache_size=0,
+            timeout=8,
+        )
+    except Exception as exc:  # noqa: BLE001 - the point is to report the failure
+        report["raw"]["connect"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+        return ok(report)
+    try:
+        for _ in range(3):
+            await conn.execute("SELECT 1")
+        report["raw"]["query"] = "ok"
+    except Exception as exc:  # noqa: BLE001
+        report["raw"]["query"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+    finally:
+        await conn.close()
+    return ok(report)
+
+
 @router.get("/health/live", summary="فحص الحياة")
 async def live():
     return ok({"status": "alive", "version": settings.app_version})
