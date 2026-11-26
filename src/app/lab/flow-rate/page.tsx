@@ -193,6 +193,11 @@ export default function FlowRatePage() {
     const means = evaluation.set_points.map((sp) => (sp.mean ? Number(sp.mean) : null));
     const accuracies = evaluation.set_points.map((sp) => (sp.accuracy_pct ? Number(sp.accuracy_pct) : null));
     const band = Number(evaluation.accuracy_limit);
+    // The accuracy axis has to contain the limit, or the dashed ±2 % lines fall outside the
+    // plot and a reader cannot see how far from the limit the points actually are. The window
+    // widens when a result exceeds the limit, so a failure is never clipped away.
+    const worst = Math.max(band, ...accuracies.map((value) => Math.abs(value ?? 0)));
+    const window = Number((worst * 1.25).toFixed(3));
     const series: EChartsOption['series'] = [
       { name: t('المتوسط المقاس', 'Measured mean'), type: 'bar', data: means, itemStyle: { color: '#21695e' }, barWidth: '34%' },
       {
@@ -221,7 +226,7 @@ export default function FlowRatePage() {
       xAxis: { type: 'category', data: labels, name: 'mL/min', nameLocation: 'middle', nameGap: 24 },
       yAxis: [
         { type: 'value', name: 'mL/min' },
-        { type: 'value', name: '%', splitLine: { show: false } },
+        { type: 'value', name: '%', min: -window, max: window, splitLine: { show: false } },
       ],
       series,
     } as EChartsOption;
