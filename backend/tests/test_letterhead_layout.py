@@ -135,3 +135,32 @@ def test_the_official_mark_ships_with_the_application() -> None:
     bundled = bs._bundled_logo()
     assert bundled is not None and bundled["bundled"] is True
     assert bundled["width"] and bundled["height"]
+
+
+def test_the_mark_is_embedded_at_print_size() -> None:
+    """The logo prints at 16 mm; embedding 1024 px of it made every report 1.4 MB.
+
+    Inspectors download these reports and the platform mirrors them into the database as
+    evidence, so a 25× file size for pixels no printer can show is a real cost. 256 px is
+    16 mm at ~400 dpi — sharper than the printer, a fraction of the bytes.
+    """
+    import io as _io
+
+    from PIL import Image as PILImage
+
+    from app.services import branding_service as bs
+    from app.services.report_service import LOGO_PIXELS, _letterhead_logo
+
+    shipped = bs.DEFAULT_LOGO_FILE.read_bytes()
+    shrunk = _letterhead_logo(shipped)
+    with PILImage.open(_io.BytesIO(shrunk)) as image:
+        assert max(image.size) <= LOGO_PIXELS
+    assert len(shrunk) < len(shipped), "the embedded copy must get smaller, not bigger"
+
+
+def test_a_broken_logo_is_passed_through_untouched() -> None:
+    """A decoder that refuses the file must not cost the report its letterhead."""
+    from app.services.report_service import _letterhead_logo
+
+    garbage = b"not an image at all"
+    assert _letterhead_logo(garbage) == garbage

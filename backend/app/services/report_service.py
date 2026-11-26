@@ -184,6 +184,36 @@ BRAND = colors.HexColor("#21695e")
 # ════════════════════════════════════════════════════════════════════════════
 
 
+#: The mark prints at 16 mm; 16 mm at 400 dpi is 252 px. Anything beyond that is stored,
+#: transferred and archived for nothing: the shipped 1024 px logo made every report
+#: 1.4 MB instead of ~60 kB, and those reports are downloaded by inspectors and mirrored
+#: into the database as evidence.
+LOGO_PIXELS = 256
+
+
+def _letterhead_logo(body: bytes) -> bytes:
+    """Re-encode the letterhead mark at the largest size the page can actually use.
+
+    WEBP is decoded by Pillow but ReportLab embeds whatever pixels it is handed, so a
+    1024×1024 mark was copied into every page at full resolution. Downscaling is lossless
+    for print at this size and shrinks a report by an order of magnitude. Any failure
+    returns the original bytes: a big report is a nuisance, a missing letterhead is a
+    defect.
+    """
+    try:
+        from PIL import Image as PILImage
+
+        with PILImage.open(io.BytesIO(body)) as source:
+            image = source.convert("RGBA") if source.mode == "P" else source.copy()
+        if max(image.size) > LOGO_PIXELS:
+            image.thumbnail((LOGO_PIXELS, LOGO_PIXELS), PILImage.LANCZOS)
+        out = io.BytesIO()
+        image.save(out, format="PNG", optimize=True)
+        return out.getvalue()
+    except Exception:  # noqa: BLE001 - decoding a logo must never cost a report
+        return body
+
+
 def _qr_image(payload: str) -> Image:
     qr = qrcode.QRCode(version=None, box_size=3, border=1)
     qr.add_data(payload)
@@ -300,7 +330,7 @@ def _letterhead(
     body = branding.get("logo_bytes")
     if body:
         try:
-            logo = Image(io.BytesIO(body))
+            logo = Image(io.BytesIO(_letterhead_logo(body)))
             max_w, max_h = centre - 6 * mm, 16 * mm
             ratio = min(max_w / logo.imageWidth, max_h / logo.imageHeight)
             logo.drawWidth = logo.imageWidth * ratio
@@ -826,7 +856,7 @@ def _write_letterhead(ws, branding: dict[str, Any] | None, columns: int) -> None
         try:
             from openpyxl.drawing.image import Image as XLImage
 
-            image = XLImage(io.BytesIO(body))
+            image = XLImage(io.BytesIO(_letterhead_logo(body)))
             ratio = min(60 / image.width, 56 / image.height, 1.0)
             image.width = max(1, int(image.width * ratio))
             image.height = max(1, int(image.height * ratio))
