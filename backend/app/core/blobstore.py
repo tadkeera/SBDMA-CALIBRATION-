@@ -173,6 +173,24 @@ async def _fetch(key: str, session: AsyncSession | None) -> StoredBlob | None:
         return (await own_session.execute(stmt)).scalar_one_or_none()
 
 
+async def exists(key: str, *, session: AsyncSession | None = None) -> bool:
+    """Whether ``key``'s bytes can actually be produced right now.
+
+    Cheap on purpose: a local file is the common case and answers without a query.
+    Otherwise the durable row decides — which is the question a caller really asks
+    ("can I serve this?"), not "is there a file with that name?".
+    """
+    if _local_path(key).is_file():
+        return True
+    if not durable_storage_enabled():
+        return False
+    try:
+        return await _fetch(key, session) is not None
+    except Exception as exc:  # a presence check must never become a 500
+        logger.warning("blob presence could not be checked for %s: %s", key, exc)
+        return False
+
+
 async def read_bytes(
     key: str,
     *,

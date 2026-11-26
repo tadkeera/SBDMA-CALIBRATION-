@@ -52,6 +52,18 @@ def _public_payload(branding: dict) -> dict:
             if logo
             else None
         ),
+        # Present only when a record could not be produced and the shipped mark is
+        # standing in for it: silence means "what the metadata says is what prints".
+        **(
+            {"logo_fallback": branding["logo_fallback"]}
+            if branding.get("logo_fallback")
+            else {}
+        ),
+        **(
+            {"logo_missing_upload": branding["logo_missing_upload"]}
+            if branding.get("logo_missing_upload")
+            else {}
+        ),
     }
 
 

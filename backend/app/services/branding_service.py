@@ -114,17 +114,41 @@ class BrandingService:
         ).scalar_one_or_none()
 
     async def get(self) -> dict[str, Any]:
-        """The effective letterhead: stored values, or the defaults."""
+        """The effective letterhead: stored values, or the defaults.
+
+        "Effective" is the operative word for the logo: a record can describe bytes that
+        are gone (an upload made before durable storage, a replica that never had the
+        file). Reporting that record verbatim would tell an administrator their upload is
+        in force while the reports print the shipped emblem, so the payload reports the
+        mark a report would actually carry and names the record it replaced. The lost
+        record itself is kept in ``logo_missing_upload`` rather than thrown away — it is
+        what someone reconciling the archive needs.
+        """
         row = await self._row()
         value = (row.value_jsonb if row else None) or {}
-        return {
+        logo = value.get("logo") or _bundled_logo()
+        payload: dict[str, Any] = {
             "header_ar": list(value.get("header_ar") or DEFAULT_HEADER_AR),
             "header_en": list(value.get("header_en") or DEFAULT_HEADER_EN),
             "is_default": not row or not value.get("header_ar"),
-            "logo": value.get("logo") or _bundled_logo(),
+            "logo": logo,
             "updated_at": value.get("updated_at"),
             "updated_by": value.get("updated_by"),
         }
+        if logo and not logo.get("bundled") and logo.get("storage_path"):
+            if not await blobstore.exists(logo["storage_path"], session=self.session):
+                shipped = _bundled_logo()
+                if shipped is not None:
+                    payload["logo_fallback"] = "bundled"
+                    payload["logo_missing_upload"] = {
+                        "storage_path": logo.get("storage_path"),
+                        "sha256": logo.get("sha256"),
+                        "filename": logo.get("filename"),
+                        "updated_by": logo.get("updated_by"),
+                        "updated_at": logo.get("updated_at"),
+                    }
+                    payload["logo"] = shipped
+        return payload
 
     async def load(self) -> dict[str, Any]:
         """Read the letterhead and resolve the logo bytes for a renderer.
@@ -139,7 +163,11 @@ class BrandingService:
             body = DEFAULT_LOGO_FILE.read_bytes() if DEFAULT_LOGO_FILE.is_file() else None
             branding["logo_bytes"] = body
             branding["logo_integrity_ok"] = (
-                body is not None and hashlib.sha256(body).hexdigest() == logo.get("sha256")
+                body is not None
+                and hashlib.sha256(body).hexdigest() == logo.get("sha256")
+                # the shipped bytes are intact, but they are standing in for an upload
+                # that could not be produced: the letterhead is fine, the archive is not
+                and "logo_missing_upload" not in branding
             )
             return branding
         if logo:

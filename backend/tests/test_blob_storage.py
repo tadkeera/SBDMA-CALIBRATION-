@@ -244,6 +244,15 @@ async def test_a_lost_upload_prints_the_shipped_mark(client, admin_session, dura
     assert served.status_code == 200, "the letterhead must still print a mark"
     assert served.content == DEFAULT_LOGO_FILE.read_bytes()
 
+    # the public payload must describe what prints, not what is recorded: otherwise an
+    # administrator reads "856 kB PNG, uploaded by admin" while every report carries the
+    # shipped emblem — a discrepancy nobody would notice until an audit
+    reported = (await client.get("/api/v1/branding")).json()["data"]
+    assert reported["logo"]["bundled"] is True
+    assert reported["logo"]["filename"] == DEFAULT_LOGO_FILE.name
+    assert reported["logo_fallback"] == "bundled"
+    assert reported["logo_missing_upload"]["filename"], "the lost record stays visible"
+
     async with SessionFactory() as session:
         from app.services.branding_service import BrandingService
 

@@ -17,7 +17,7 @@ import pytest
 from openpyxl import load_workbook
 from PIL import Image as PILImage
 
-from app.services.branding_service import DEFAULT_HEADER_AR, DEFAULT_HEADER_EN
+from app.services.branding_service import DEFAULT_HEADER_AR, DEFAULT_HEADER_EN, HEADER_KEY
 
 
 def _png(colour: str = "#123e6b", size: tuple[int, int] = (480, 160)) -> bytes:
@@ -44,7 +44,21 @@ async def _upload(client, session, body: bytes, *, name: str, ctype: str):  # no
 
 
 async def test_letterhead_defaults_are_public_and_exact(client):
-    """The sign-in screen is unauthenticated, so the letterhead must be too."""
+    """The sign-in screen is unauthenticated, so the letterhead must be too.
+
+    The stored row is removed first: every other branding test writes one, and a test
+    that only passes when it happens to run before its neighbours is a trap for whoever
+    next renames a file.
+    """
+    from sqlalchemy import delete
+
+    from app.core.database import SessionFactory
+    from app.models.audit import SystemSetting
+
+    async with SessionFactory() as session:
+        await session.execute(delete(SystemSetting).where(SystemSetting.key == HEADER_KEY))
+        await session.commit()
+
     response = await client.get("/api/v1/branding")
     assert response.status_code == 200, response.text
     data = response.json()["data"]

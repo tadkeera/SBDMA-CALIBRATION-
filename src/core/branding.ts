@@ -40,6 +40,8 @@ export interface BrandingLogo {
   updated_at: string | null;
   updated_by: string | null;
   url: string;
+  /** True when this is the mark shipped with the platform, not an upload. */
+  bundled?: boolean;
 }
 
 export interface Branding {
@@ -49,6 +51,16 @@ export interface Branding {
   updated_at: string | null;
   updated_by: string | null;
   logo: BrandingLogo | null;
+  /** `'bundled'` when a recorded upload could not be produced and the shipped mark prints. */
+  logo_fallback?: 'bundled';
+  /** The record that could not be produced — kept so the loss is visible, not silent. */
+  logo_missing_upload?: {
+    storage_path: string | null;
+    sha256: string | null;
+    filename: string | null;
+    updated_by: string | null;
+    updated_at: string | null;
+  };
 }
 
 export const DEFAULT_BRANDING: Branding = {

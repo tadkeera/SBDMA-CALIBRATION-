@@ -290,6 +290,33 @@ export default function SettingsPage() {
                 </div>
               )}
 
+              {branding?.logo_fallback === 'bundled' ? (
+                <div
+                  role="status"
+                  style={{
+                    fontSize: '0.76rem',
+                    lineHeight: 1.7,
+                    color: 'var(--text)',
+                    background: 'var(--surface-2)',
+                    borderInlineStart: '3px solid #b07b1e',
+                    borderRadius: 8,
+                    padding: '8px 10px',
+                  }}
+                >
+                  {t(
+                    `المطبوع الآن هو الشعار الرسمي المُشحون مع المنصة، لأن بايتات الرفع السابق (${branding.logo_missing_upload?.filename ?? '—'}) لم تعد متاحة. السجل محفوظ في التدقيق — أعد رفع الشعار ليعود إلى التقارير.`,
+                    `Reports currently print the mark shipped with the platform: the bytes of the previous upload (${branding.logo_missing_upload?.filename ?? '—'}) are no longer available. The record is preserved in the audit trail — upload the logo again to put it back on the reports.`,
+                  )}
+                </div>
+              ) : branding?.logo?.bundled ? (
+                <div style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                  {t(
+                    'الشعار الرسمي المُشحون مع المنصة — ارفع شعاراً ليحل محله.',
+                    'The mark shipped with the platform — upload one to replace it.',
+                  )}
+                </div>
+              ) : null}
+
               <input
                 ref={fileInput}
                 type="file"
