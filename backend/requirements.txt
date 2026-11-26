@@ -19,7 +19,7 @@ celery==5.4.0
 # engine is Decimal-based (NUMERIC(20,8) precision, no binary floats), statistics are
 # computed explicitly, and charts are drawn client-side with ECharts. They were 198 MB
 # of image — and more than the whole Vercel function budget — carried for nothing.
-reportlab==4.2.5
+reportlab==5.1.0
 openpyxl==3.1.5
 qrcode[pil]==8.0
 arabic-reshaper==3.1.0
