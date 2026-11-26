@@ -62,6 +62,20 @@ def test_arabic_shaping_is_a_no_op_without_the_font(monkeypatch) -> None:  # noq
 # ───────────────────────── release 2.3.0 · Cairo ─────────────────────────── #
 
 
+def test_the_arabic_face_used_in_pdfs_can_actually_be_shaped() -> None:
+    """ReportLab cannot shape Arabic, so the face must carry the pre-shaped forms.
+
+    The 2.3.0 build pointed PDF Arabic at Cairo — the interface face — and every Arabic run
+    in a certificate came out with broken joining, because Cairo relies on OpenType shaping
+    and covers only 63 % of Arabic Presentation Forms-B. The face is now chosen by coverage,
+    and this test fails if that check is ever removed.
+    """
+    assert rs.arabic_coverage(rs._FONTS_DIR / "DejaVuSans.ttf") >= rs.ARABIC_COVERAGE_FLOOR
+    assert rs.arabic_coverage(rs._FONTS_DIR / "Cairo-Regular.ttf") < rs.ARABIC_COVERAGE_FLOOR
+    assert rs.FONT_AR == rs.FONT_BODY
+    assert rs.FONT_AR_STRONG == rs.FONT_STRONG
+
+
 def test_the_cairo_face_ships_with_the_application_and_is_registered() -> None:
     """The Arabic face is bundled, licensed, and actually the font the styles name."""
     fonts = Path(__file__).resolve().parents[1] / "app" / "assets" / "fonts"
@@ -73,11 +87,12 @@ def test_the_cairo_face_ships_with_the_application_and_is_registered() -> None:
     licence = (fonts / "LICENSE-Cairo.txt").read_text(encoding="utf-8")
     assert "SIL Open Font License" in licence
 
+    # registered and ready for the interface and for any future shaping engine
     assert rs.FONT_AR_REGULAR in pdfmetrics.getRegisteredFontNames()
-    assert rs.FONT_AR_STRONG in pdfmetrics.getRegisteredFontNames()
+    assert rs.FONT_AR_BOLD in pdfmetrics.getRegisteredFontNames()
 
 
-def test_arabic_runs_are_set_in_cairo_but_latin_runs_are_not() -> None:
+def test_arabic_runs_are_marked_with_the_arabic_face() -> None:
     """Arabic switches face; the Latin body of a document keeps the face it had."""
     run = rs.ar_run("معايرة")
     assert f'name="{rs.FONT_AR}"' in run
@@ -87,8 +102,8 @@ def test_arabic_runs_are_set_in_cairo_but_latin_runs_are_not() -> None:
     assert rs.ar_run("") == ""
 
 
-def test_without_cairo_the_styles_fall_back_to_the_latin_face() -> None:
-    """A deployment that ships without the Arabic face renders in DejaVu, not a 500."""
-    assert rs._pick("Cairo", "DejaVuSans", set()) == "DejaVuSans"
-    assert rs._pick("Cairo", "DejaVuSans", {"DejaVuSans"}) == "DejaVuSans"
-    assert rs._pick("Cairo", "DejaVuSans", {"DejaVuSans", "Cairo"}) == "Cairo"
+def test_a_missing_or_unshapable_face_falls_back_to_the_latin_body() -> None:
+    """A deployment without a usable Arabic face still prints a document."""
+    assert rs._arabic_face(None, "DejaVuSans") == "DejaVuSans"
+    assert rs._arabic_face(rs._FONTS_DIR / "does-not-exist.ttf", "DejaVuSans") == "DejaVuSans"
+    assert rs._arabic_face(rs._FONTS_DIR / "DejaVuSans.ttf", "Fallback") == "DejaVuSans"

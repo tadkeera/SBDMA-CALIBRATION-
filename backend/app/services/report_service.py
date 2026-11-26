@@ -136,21 +136,41 @@ FONT_BODY = FONT_REGULAR if HAS_ARABIC_FONT else FALLBACK_REGULAR
 FONT_STRONG = FONT_BOLD if HAS_ARABIC_FONT else FALLBACK_BOLD
 
 
-def _pick(face: str, fallback: str, registered: set[str]) -> str:
-    """Choose a registered face, or fall back to one that is certain to exist.
-
-    Fonts are a deployment detail: a release that ships without Cairo must still print a
-    certificate. The decision is a function so the fallback can be tested without removing
-    files from the image.
-    """
-    return face if HAS_ARABIC_FONT and face in registered else fallback
+#: Arabic Presentation Forms-B (U+FE70–U+FEFC). ReportLab has no shaping engine: Arabic must
+#: arrive pre-shaped, i.e. as glyphs from this block, so a face used for Arabic in a PDF has
+#: to carry it. Cairo — the interface face — covers 63 % of the block and renders as broken
+#: joining; DejaVuSans covers 99 %.
+ARABIC_FORMS = range(0xFE70, 0xFEFD)
+ARABIC_COVERAGE_FLOOR = 0.95
 
 
-_REGISTERED = set(pdfmetrics.getRegisteredFontNames())
+def arabic_coverage(font_path: Path) -> float:
+    """Share of the pre-shaped Arabic block a font file actually contains."""
+    try:
+        from fontTools.ttLib import TTFont as _TTFont
 
-#: The Arabic face, or the Latin body face when Cairo is not installed.
-FONT_AR = _pick(FONT_AR_REGULAR, FONT_BODY, _REGISTERED)
-FONT_AR_STRONG = _pick(FONT_AR_BOLD, FONT_STRONG, _REGISTERED)
+        cmap = _TTFont(str(font_path)).getBestCmap()
+    except Exception:  # pragma: no cover - fontTools absent or a corrupt file
+        return 0.0
+    total = len(list(ARABIC_FORMS))
+    return sum(1 for code in ARABIC_FORMS if code in cmap) / total
+
+
+def _arabic_face(candidate: Path | None, fallback: str) -> str:
+    """Pick the PDF Arabic face: the candidate only if it can be shaped correctly."""
+    if candidate is None or not HAS_ARABIC_FONT:
+        return fallback
+    if arabic_coverage(candidate) >= ARABIC_COVERAGE_FLOOR:
+        return candidate.stem
+    return fallback
+
+
+_FONTS_DIR = Path(__file__).resolve().parent.parent / "assets" / "fonts"
+
+#: The face Arabic runs are set in *inside PDFs*. Cairo is the interface face; documents keep
+#: the face that can carry pre-shaped text, so a certificate never prints broken joining.
+FONT_AR = _arabic_face(_FONTS_DIR / "Cairo-Regular.ttf", FONT_BODY)
+FONT_AR_STRONG = _arabic_face(_FONTS_DIR / "Cairo-Bold.ttf", FONT_STRONG)
 
 
 def ar(text: str) -> str:
@@ -464,8 +484,16 @@ def _header_table(
         "<b>SBDMA</b><br/><font size=6.5>Laboratory Calibration &amp; OQ Platform</font>",
         ParagraphStyle("logo", parent=st["cellb"], fontSize=13, leading=15, textColor=colors.white),
     )
+    # The Arabic title gets its own paragraph. Putting it on the same line as the English one
+    # makes the two scripts reorder into each other across a line break, and a certificate
+    # whose own title reads "اختبار … شهادة" is not a document anyone should have to defend.
+    # One paragraph, an explicit break: two flowables in a table cell lay themselves out as a
+    # column and interleave with the Latin line when the Arabic run wraps.
     titles = [
-        Paragraph(mix(title_en, title_ar), st["title"]),
+        Paragraph(
+            f"{title_en}<br/><font size=9.5>{ar(title_ar)}</font>",
+            ParagraphStyle("t_mixed", parent=st["title"], leading=17),
+        ),
         Paragraph(subtitle, st["sub"]),
     ]
     table = Table([[logo, titles]], colWidths=[38 * mm, None])

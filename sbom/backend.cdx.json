@@ -8,7 +8,7 @@
       "name": "sbdma-calibration-api",
       "version": "2.3.0"
     },
-    "timestamp": "2026-11-26T22:44:21Z"
+    "timestamp": "2026-11-26T23:40:58Z"
   },
   "components": [
     {
@@ -181,6 +181,20 @@
     },
     {
       "type": "library",
+      "name": "flatbuffers",
+      "version": "25.12.19",
+      "purl": "pkg:pypi/flatbuffers@25.12.19",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "fonttools",
+      "version": "4.69.1",
+      "purl": "pkg:pypi/fonttools@4.69.1",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "greenlet",
       "version": "3.5.6",
       "purl": "pkg:pypi/greenlet@3.5.6",
@@ -251,6 +265,27 @@
     },
     {
       "type": "library",
+      "name": "networkx",
+      "version": "3.7",
+      "purl": "pkg:pypi/networkx@3.7",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "numpy",
+      "version": "2.5.5",
+      "purl": "pkg:pypi/numpy@2.5.5",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "onnxruntime",
+      "version": "1.32.0",
+      "purl": "pkg:pypi/onnxruntime@1.32.0",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "openpyxl",
       "version": "3.1.5",
       "purl": "pkg:pypi/openpyxl@3.1.5",
@@ -279,6 +314,13 @@
     },
     {
       "type": "library",
+      "name": "playwright",
+      "version": "1.65.2",
+      "purl": "pkg:pypi/playwright@1.65.2",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "pluggy",
       "version": "1.7.0",
       "purl": "pkg:pypi/pluggy@1.7.0",
@@ -289,6 +331,20 @@
       "name": "prompt_toolkit",
       "version": "3.0.53",
       "purl": "pkg:pypi/prompt-toolkit@3.0.53",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "protobuf",
+      "version": "7.36.2",
+      "purl": "pkg:pypi/protobuf@7.36.2",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "psutil",
+      "version": "7.2.2",
+      "purl": "pkg:pypi/psutil@7.2.2",
       "scope": "required"
     },
     {
@@ -338,6 +394,27 @@
       "name": "pydantic_core",
       "version": "2.27.2",
       "purl": "pkg:pypi/pydantic-core@2.27.2",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "pymupdf",
+      "version": "2.2",
+      "purl": "pkg:pypi/pymupdf@2.2",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "pymupdf4llm",
+      "version": "2.2",
+      "purl": "pkg:pypi/pymupdf4llm@2.2",
+      "scope": "required"
+    },
+    {
+      "type": "library",
+      "name": "pymupdf_layout",
+      "version": "2.2",
+      "purl": "pkg:pypi/pymupdf-layout@2.2",
       "scope": "required"
     },
     {
@@ -461,6 +538,13 @@
     },
     {
       "type": "library",
+      "name": "tabulate",
+      "version": "0.10.0",
+      "purl": "pkg:pypi/tabulate@0.10.0",
+      "scope": "required"
+    },
+    {
+      "type": "library",
       "name": "typing_extensions",
       "version": "4.16.0",
       "purl": "pkg:pypi/typing-extensions@4.16.0",
@@ -516,5 +600,5 @@
       "scope": "required"
     }
   ],
-  "serialNumber": "urn:uuid:c698793b-17a7-5d1a-82f8-b127619b3333"
+  "serialNumber": "urn:uuid:37e3856c-e344-589b-b5e7-1ac4cd6425e0"
 }

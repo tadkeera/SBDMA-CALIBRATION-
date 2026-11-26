@@ -23,6 +23,7 @@ reportlab==4.2.5
 openpyxl==3.1.5
 qrcode[pil]==8.0
 arabic-reshaper==3.1.0
+fonttools==4.60.1
 python-bidi==0.6.12
 # test tooling lives in requirements-dev.txt so the runtime bundle stays small enough
 # to deploy as a serverless function
