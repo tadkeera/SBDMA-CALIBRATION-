@@ -37,6 +37,9 @@ async def db_probe():
     report: dict = {
         "asyncpg_version": asyncpg.__version__,
         "sqlalchemy_version": sqlalchemy.__version__,
+        "asyncpg_connect_name": getattr(asyncpg.connect, "__name__", "?"),
+        "dbapi_connect_name": getattr(engine.dialect.dbapi.connect, "__name__", "?"),
+        "pool_status": str(engine.pool.status())[:80],
         "connect_arg_keys": sorted(_connect_args),
         "statement_cache_size": _connect_args.get("statement_cache_size"),
         "prepared_statement_cache_size": _connect_args.get("prepared_statement_cache_size"),
