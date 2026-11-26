@@ -105,28 +105,30 @@ def engine_url_and_connect_args(database_url: str) -> tuple[str, dict]:
     return cleaned.render_as_string(hide_password=False), connect_args
 
 
-def _force_dialect_cache_off() -> None:
-    """Make "no prepared statements" the dialect's default, not a per-engine argument.
+def _force_driver_cache_off() -> None:
+    """Make "no prepared statements" true at the driver, whatever layer connects.
 
-    Measured on the platform: the engine was created with ``statement_cache_size=0`` and
-    ``prepared_statement_cache_size=0``, a direct ``asyncpg.connect`` in the same process
-    with the same settings was clean — and a pooled connection still prepared
-    ``__asyncpg_stmt_2__``. Rather than keep hunting the layer that dropped the argument,
-    the dialect's own entry point is wrapped: whatever any engine passes, the cache is off.
+    Measured on the platform: the engine was built with ``statement_cache_size=0`` and
+    ``prepared_statement_cache_size=0``, a direct ``asyncpg.connect`` under the same
+    settings was clean, and a pooled connection still prepared ``__asyncpg_stmt_2`` — the
+    argument was lost somewhere between the engine and the driver. Rather than keep
+    hunting the layer responsible, the driver's own entry point is wrapped: every
+    connection opened by anything in this process is uncached. The cost is microseconds
+    per query; the alternative was a 503 on a healthy database.
     """
-    from sqlalchemy.dialects.postgresql import asyncpg as asyncpg_dialect
+    original = asyncpg.connect
 
-    original = asyncpg_dialect.AsyncAdapt_asyncpg_dbapi.connect
-
-    def connect_without_cache(self, *args: object, **kwargs: object) -> object:  # noqa: ANN001
+    async def connect_uncached(*args: object, **kwargs: object) -> object:
         kwargs["statement_cache_size"] = 0
-        kwargs["prepared_statement_cache_size"] = 0
-        return original(self, *args, **kwargs)
+        kwargs["max_cached_statement_lifetime"] = 0
+        kwargs.pop("prepared_statement_cache_size", None)  # SQLAlchemy's own argument
+        return await original(*args, **kwargs)
 
-    asyncpg_dialect.AsyncAdapt_asyncpg_dbapi.connect = connect_without_cache  # type: ignore[method-assign]
+    connect_uncached.__name__ = "connect_uncached"
+    asyncpg.connect = connect_uncached  # type: ignore[assignment]
 
 
-_force_dialect_cache_off()
+_force_driver_cache_off()
 
 _engine_url, _connect_args = engine_url_and_connect_args(_settings.database_url)
 

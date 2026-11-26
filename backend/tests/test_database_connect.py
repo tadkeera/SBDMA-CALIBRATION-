@@ -101,31 +101,31 @@ async def test_the_driver_creator_forces_the_cache_off(monkeypatch) -> None:
     assert "prepared_statement_cache_size" not in captured  # not an asyncpg keyword
 
 
-def test_the_dialect_itself_refuses_to_cache(monkeypatch) -> None:
-    """Whatever an engine passes, the dialect's connect() turns the cache off.
+async def test_the_driver_entry_point_itself_refuses_to_cache(monkeypatch) -> None:
+    """Whatever any layer passes, ``asyncpg.connect`` opens an uncached connection.
 
-    This is the layer that production proved was not honouring the engine's arguments:
-    a pooled connection prepared ``__asyncpg_stmt_2__`` while a direct connect was clean.
+    Production proved the engine's arguments were not reaching the driver: a pooled
+    connection prepared ``__asyncpg_stmt_2__`` while a direct connect in the same process
+    was clean. The wrapper is the layer that cannot be skipped.
     """
-    from sqlalchemy.dialects.postgresql import asyncpg as asyncpg_dialect
+    import asyncpg
 
     captured: dict = {}
 
-    def fake_connect(self, *args: object, **kwargs: object) -> str:  # noqa: ANN001
+    async def fake_connect(*args: object, **kwargs: object) -> str:
         captured.update(kwargs)
         return "connection"
 
-    # the wrapper installed at import delegates to whatever `connect` is now in place
-    import app.core.database as database_module
-
-    original = asyncpg_dialect.AsyncAdapt_asyncpg_dbapi.connect
-    monkeypatch.setattr(asyncpg_dialect.AsyncAdapt_asyncpg_dbapi, "connect", fake_connect)
-    database_module._force_dialect_cache_off()
+    already_wrapped = asyncpg.connect  # the wrapper installed when app.core imported
+    monkeypatch.setattr(asyncpg, "connect", fake_connect)
     try:
-        dbapi = asyncpg_dialect.AsyncAdapt_asyncpg_dbapi(None)
-        assert dbapi.connect(statement_cache_size=100, prepared_statement_cache_size=100) == "connection"
+        database._force_driver_cache_off()
+        opened = await asyncpg.connect(
+            user="u", database="d", statement_cache_size=100, prepared_statement_cache_size=100
+        )
     finally:
-        monkeypatch.setattr(asyncpg_dialect.AsyncAdapt_asyncpg_dbapi, "connect", original)
-        database_module._force_dialect_cache_off()
+        monkeypatch.setattr(asyncpg, "connect", already_wrapped)
+    assert opened == "connection"
     assert captured["statement_cache_size"] == 0
-    assert captured["prepared_statement_cache_size"] == 0
+    assert captured["max_cached_statement_lifetime"] == 0
+    assert "prepared_statement_cache_size" not in captured  # not an asyncpg keyword
