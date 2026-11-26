@@ -67,65 +67,31 @@ async def db_probe():
     finally:
         await conn.close()
 
-    # What the engine's connect path actually builds: same DBAPI call the pool makes,
-    # but held in the hand, so its prepared-statement cache can be inspected before any
-    # statement runs.
-    report["engine"] = {"dbapi": type(engine.dialect.dbapi).__name__}
-    try:
-        _url_args, url_kw = engine.dialect.create_connect_args(engine.url)
-        kwargs = {**url_kw, **_connect_args}
-        report["engine"]["kwargs_keys"] = sorted(kwargs)
-        adapted = await engine.dialect.dbapi.connect(**kwargs)
-        inner = adapted.driver_connection
-        cache = getattr(inner, "_statement_cache", "absent")
-        report["engine"]["asyncpg_statement_cache"] = None if cache is None else type(cache).__name__
-        dialect_cache = getattr(adapted, "_prepared_statement_cache", "absent")
-        report["engine"]["dialect_statement_cache"] = (
-            None if dialect_cache is None else type(dialect_cache).__name__
-        )
-        await adapted.close()
-    except Exception as exc:  # noqa: BLE001
-        report["engine"]["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
-
+    # The pooled connection itself: does *this* driver keep a statement cache?
     try:
         async with engine.connect() as pooled:
-            result = await pooled.exec_driver_sql("SELECT 1")
-            report["engine"]["query"] = str(result.scalar_one())
-    except Exception as exc:  # noqa: BLE001
-        report["engine"]["pooled_error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
-
-    # same engine, without the checkout ping, so the connection can be inspected first
-    from sqlalchemy.ext.asyncio import create_async_engine
-
-    fresh = create_async_engine(engine.url, connect_args=_connect_args, pool_pre_ping=False)
-    try:
-        async with fresh.connect() as probe_conn:
-            raw = probe_conn.sync_connection.connection
-            driver = raw.dbapi_connection
-            adapted = getattr(driver, "_connection", None)
-            report["engine"]["fresh"] = {
-                "driver_type": type(driver).__name__,
-                "asyncpg_cache": (
+            one = await pooled.exec_driver_sql("SELECT 1")
+            report["engine"] = {"query": str(one.scalar_one())}
+            try:
+                raw = pooled.sync_connection.connection  # noqa: F841 - force the wrap
+                dbapi_conn = raw.dbapi_connection
+                asyncpg_conn = getattr(dbapi_conn, "_connection", None)
+                report["engine"]["asyncpg_cache_enabled"] = getattr(
+                    asyncpg_conn, "_stmt_cache_enabled", "unknown"
+                )
+                report["engine"]["dialect_cache"] = (
                     "none"
-                    if getattr(adapted, "_statement_cache", "absent") is None
-                    else type(getattr(adapted, "_statement_cache", None)).__name__
-                ),
-                "dialect_cache": (
-                    "none"
-                    if getattr(driver, "_prepared_statement_cache", "absent") is None
-                    else type(getattr(driver, "_prepared_statement_cache", None)).__name__
-                ),
-            }
-            rows = await probe_conn.exec_driver_sql(
-                "SELECT name FROM pg_prepared_statements ORDER BY name"
+                    if getattr(dbapi_conn, "_prepared_statement_cache", "absent") is None
+                    else "present"
+                )
+            except Exception as exc:  # noqa: BLE001
+                report["engine"]["inspect_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+            names = await pooled.exec_driver_sql(
+                "SELECT count(*) FROM pg_prepared_statements"
             )
-            report["engine"]["fresh"]["server_prepared"] = [r[0] for r in rows][:10]
-            one = await probe_conn.exec_driver_sql("SELECT 1")
-            report["engine"]["fresh"]["query"] = str(one.scalar_one())
+            report["engine"]["server_prepared_count"] = names.scalar_one()
     except Exception as exc:  # noqa: BLE001
-        report["engine"]["fresh_error"] = f"{type(exc).__name__}: {str(exc)[:200]}"
-    finally:
-        await fresh.dispose()
+        report["engine"] = {"pooled_error": f"{type(exc).__name__}: {str(exc)[:200]}"}
     return ok(report)
 
 
