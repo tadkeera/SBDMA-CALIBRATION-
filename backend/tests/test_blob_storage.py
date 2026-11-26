@@ -275,6 +275,8 @@ async def test_a_refused_connection_is_retried_before_it_becomes_a_503() -> None
     can time out. The dependency now acquires the connection with a short backoff, so the
     next attempt usually succeeds and the user never learns it happened.
     """
+    from sqlalchemy.exc import OperationalError
+
     from app.core.database import CONNECT_ATTEMPTS, connect_with_retry
     from app.core.database import SessionFactory
 
@@ -299,6 +301,29 @@ async def test_a_refused_connection_is_retried_before_it_becomes_a_503() -> None
         flaky = Flaky(session, failures=CONNECT_ATTEMPTS - 1)
         await connect_with_retry(flaky)  # type: ignore[arg-type]
     assert attempts["n"] == CONNECT_ATTEMPTS
+
+    # the shape production actually raised: SQLAlchemy wraps the driver's refusal, so a
+    # retry list built from asyncpg's own exception types never fires
+    attempts["n"] = 0
+
+    class Wrapped:
+        """A session that fails the way a real refused handshake fails."""
+
+        def __init__(self, session, failures: int) -> None:
+            self._session = session
+            self._failures = failures
+
+        async def connection(self):  # noqa: ANN201
+            attempts["n"] += 1
+            if attempts["n"] <= self._failures:
+                raise OperationalError(
+                    "connect", {}, ConnectionRefusedError("pooler refused (simulated)")
+                )
+            return await self._session.connection()
+
+    async with SessionFactory() as session:
+        await connect_with_retry(Wrapped(session, failures=1))  # type: ignore[arg-type]
+    assert attempts["n"] == 2
 
     # and a database that is genuinely unreachable still fails, after the last attempt
     attempts["n"] = 0

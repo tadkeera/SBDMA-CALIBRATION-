@@ -9,6 +9,7 @@ from contextlib import asynccontextmanager, suppress
 
 import asyncpg
 
+import sqlalchemy.exc
 from sqlalchemy import text
 from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -107,16 +108,27 @@ TRANSIENT_CONNECT_ERRORS: tuple[type[BaseException], ...] = (
     asyncio.TimeoutError,
     ConnectionError,
     OSError,
+    # asyncpg's own connection-level family (ConnectionDoesNotExistError,
+    # ConnectionFailureError, …) rather than a hand-picked few
+    asyncpg.exceptions.PostgresConnectionError,
     asyncpg.exceptions.CannotConnectNowError,
-    asyncpg.exceptions.ConnectionDoesNotExistError,
     asyncpg.exceptions.TooManyConnectionsError,
     asyncpg.exceptions.InterfaceError,
+    # SQLAlchemy wraps every driver error, so the *driver's* exception type never
+    # reaches this code: a refused handshake arrives as OperationalError, and the
+    # first version of this retry therefore never fired once — it caught types that
+    # the session could not raise. ProgrammingError and IntegrityError are deliberately
+    # absent: a broken statement or a constraint violation is not a hiccup.
+    sqlalchemy.exc.DisconnectionError,
+    sqlalchemy.exc.InterfaceError,
+    sqlalchemy.exc.OperationalError,
 )
 
-#: 3 attempts, 150 ms then 450 ms: long enough to ride out a pooler hiccup, short enough
-#: that a genuinely unreachable database still fails inside the platform's timeout.
-CONNECT_ATTEMPTS = 3
-CONNECT_BACKOFF_SECONDS = 0.15
+#: 4 attempts, 100 ms → 300 ms → 900 ms. Long enough to ride out a pooler hiccup
+#: (the observed refusals last well under a second), short enough that a genuinely
+#: unreachable database still fails inside the platform's request timeout.
+CONNECT_ATTEMPTS = 4
+CONNECT_BACKOFF_SECONDS = 0.1
 
 
 async def connect_with_retry(session: AsyncSession, *, attempts: int = CONNECT_ATTEMPTS) -> None:
