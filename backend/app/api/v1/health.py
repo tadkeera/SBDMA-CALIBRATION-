@@ -62,6 +62,23 @@ async def db_probe():
         report["raw"]["query"] = f"{type(exc).__name__}: {str(exc)[:120]}"
     finally:
         await conn.close()
+
+    # what the *engine's* connections look like: the raw asyncpg object of a pooled
+    # connection, asked whether it keeps a statement cache at all
+    report["engine"] = {}
+    try:
+        async with engine.connect() as pooled:
+            raw = await pooled.get_raw_connection()
+            driver = getattr(raw, "driver_connection", None)
+            inner = getattr(driver, "_connection", driver)
+            cache = getattr(inner, "_statement_cache", "absent")
+            report["engine"]["statement_cache"] = (
+                None if cache is None else type(cache).__name__
+            )
+            result = await pooled.exec_driver_sql("SELECT 1")
+            report["engine"]["query"] = str(result.scalar_one())
+    except Exception as exc:  # noqa: BLE001
+        report["engine"]["error"] = f"{type(exc).__name__}: {str(exc)[:160]}"
     return ok(report)
 
 
