@@ -2,7 +2,7 @@
 # image and, more sharply, the Vercel function) does not carry a test runner.
 -r requirements.txt
 httpx==0.28.1
-pytest==8.3.4
+pytest==9.2.0
 # 0.26 is the first release that implements ``asyncio_default_test_loop_scope``, which
 # pytest.ini already set. On 0.25 that key is silently ignored, every test gets a
 # function-scoped loop while the session fixtures keep a session-scoped one, and the
