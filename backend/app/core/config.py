@@ -26,7 +26,7 @@ class Settings(BaseSettings):
     # --- application ---
     app_name: str = "SBDMA Laboratory Calibration & OQ Platform"
     # kept in step with /VERSION; surfaced by /health and the OpenAPI metadata
-    app_version: str = "2.4.0"
+    app_version: str = "2.4.1"
     environment: Literal["development", "test", "staging", "production"] = "development"
     api_prefix: str = "/api/v1"
     debug: bool = False

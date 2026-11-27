@@ -218,10 +218,14 @@ export default function UnitsPage() {
         <Skeleton rows={4} />
       ) : units.length === 0 ? (
         <EmptyState
-          title={t('لا يوجد جهاز مسجل بعد', 'No unit is registered yet')}
+          // The register is department-scoped for the bench: a QA officer sees the units of
+          // its own department, which may legitimately be none while the laboratory holds
+          // instruments. Saying "nothing is registered yet" would be untrue there, so the
+          // empty state states the scope it is empty in.
+          title={t('لا يوجد جهاز في نطاقك', 'No unit in your scope')}
           detail={t(
-            'سجّل أول جهاز HPLC؛ سيحمل الرقم 1 وتُضاف إليه اختبارات البروتوكول المعتمد.',
-            'Register the first HPLC unit; it takes number 1 and inherits the approved protocol’s tests.',
+            'الأجهزة تُعرض في نطاق قسمك. سجّل أول جهاز HPLC؛ سيحمل الرقم 1 وتُضاف إليه اختبارات البروتوكول المعتمد.',
+            'Units are listed within your own department. Register the first HPLC unit; it takes number 1 and inherits the approved protocol’s tests.',
           )}
           action={
             canCreate ? (

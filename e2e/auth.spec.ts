@@ -87,11 +87,15 @@ test.describe('identity', () => {
     const users = await page.request.get('/api/v1/users');
     expect(users.status(), 'a viewer must not be able to read the user register').toBe(403);
 
-    // The same rule reaches the screen: a viewer is not an operator of the laboratory at
-    // all, so the laboratory route sends it back to its own landing screen rather than
-    // showing a test page with a disabled button.
+    // The same rule reaches the screen: the viewer reads the laboratory register — the
+    // shelf is in its own sidebar — but it is offered no way to change it. Until release
+    // 2.4.1 this screen bounced the viewer to the dashboard while the sidebar kept
+    // offering it, and the same guard threw QA and the administrators out of a unit.
     await open(page, '/lab/units');
-    await expect(page).not.toHaveURL(/\/lab/, { timeout: 30_000 });
+    await expect(page).toHaveURL(/\/lab\/units/, { timeout: 30_000 });
+    await expect(
+      page.getByRole('button', { name: /إضافة جهاز HPLC|Add HPLC unit/ }),
+    ).toHaveCount(0);
     const shelf = await page.request.get('/api/v1/instruments');
     expect(shelf.status(), 'a viewer may read the register').toBe(200);
   });

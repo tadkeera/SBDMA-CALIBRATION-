@@ -27,7 +27,11 @@ import { ApiError, api, type ServerInstrument, type ServerRunSummary } from '@/c
 import { TESTS } from '@/core/protocol';
 
 export default function UnitPage() {
-  const { t, lang } = useApp();
+  const { t, lang, can } = useApp();
+  // The shelf is readable by QA and the administrators, but the readings and the run stay
+  // with the bench — the page says so instead of leaving a visitor to discover it by
+  // pressing a disabled button.
+  const readOnly = !can('calibration.run');
   const routeParams = useParams<{ unitId: string }>();
   const params = { unitId: String(routeParams?.unitId ?? '') };
   const [unit, setUnit] = useState<ServerInstrument | null>(null);
@@ -170,10 +174,15 @@ export default function UnitPage() {
         style={{ background: 'var(--surface-2)', color: 'var(--text-muted)' }}
       >
         <ShieldCheck size={13} className="mt-0.5 shrink-0" />
-        {t(
-          'الاختبارات والعناوين والحدود تأتي من البروتوكول المعتمد؛ الحساب يجري على الخادم بعد «تشغيل المعايرة»، والحفظ يسجّل تشغيلاً لهذه الوحدة وحده.',
-          'Tests, wording and limits come from the approved protocol; the calculation runs on the server when you press Run Calibration, and Save records a run for this unit alone.',
-        )}
+        {readOnly
+          ? t(
+              'أنت تفتح الوحدة للقراءة فقط: الاختبارات العشرون وحدودها ونتائجها ظاهرة، وإدخال القراءات وتشغيل المعايرة من عمل المنضدة (محلل/مشرف).',
+              'You are opening this unit read-only: the twenty tests, their limits and their results are visible, while entering readings and running the calibration belong to the bench (analyst/supervisor).',
+            )
+          : t(
+              'الاختبارات والعناوين والحدود تأتي من البروتوكول المعتمد؛ الحساب يجري على الخادم بعد «تشغيل المعايرة»، والحفظ يسجّل تشغيلاً لهذه الوحدة وحده.',
+              'Tests, wording and limits come from the approved protocol; the calculation runs on the server when you press Run Calibration, and Save records a run for this unit alone.',
+            )}
       </div>
 
       {visible.length === 0 ? (

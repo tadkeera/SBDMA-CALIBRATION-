@@ -28,6 +28,7 @@ import { ROLE_LABELS } from '@/core/types';
 import { Letterhead, PrintLetterhead } from '@/components/Letterhead';
 import { PROTOCOL_VERSION, TESTS } from '@/core/protocol';
 import { APP_VERSION, DEV_CREDIT_URL } from '@/core/constants';
+import { mayOpenShelf, mayOpenUnit } from '@/core/labAccess';
 import { api, ApiError } from '@/core/api/client';
 
 const NAV = [
@@ -131,29 +132,44 @@ export function Shell({ children }: { children: React.ReactNode }) {
     if (ready && !isLogin && !session) router.replace('/login');
   }, [ready, isLogin, session, router]);
 
-  /**
-   * The laboratory screens belong to the bench.
-   *
-   * QA and the administrators hold ``calibration.run`` too (the super administrator holds
-   * every permission), but they do not enter readings on a unit — QA reads results on the
-   * approval screen. Rather than hiding a menu entry and leaving a page reachable by URL,
-   * a principal who is not an operator is sent to its own landing screen. The server
-   * still refuses anything this does not cover.
-   */
-  const operator =
-    session?.roles.some((role) => role === 'ANALYST' || role === 'SUPERVISOR') ?? false;
-  // Registration of a unit is an administrative act; the administrator is therefore
-  // allowed onto the shelf to perform it, but nowhere else in the laboratory — the
-  // reading, the run and the approval stay with the bench and with QA.
+  //
+  // The laboratory is *readable* by anyone who may view instruments — the shelf, a unit
+  // and its twenty tiles are the register of what the laboratory holds, and QA and the
+  // administrators consult them. What is restricted to the bench is the *work*: entering
+  // readings and executing a run. Those controls are gated on ``calibration.run`` on the
+  // test page itself, and the API refuses everyone else whatever the browser shows.
+  //
+  // Release 2.4.1: until now a principal that is not an operator was sent back to the
+  // dashboard the moment it opened a unit, so the tile that exists to be clicked threw QA
+  // and the administrators out of the laboratory. The rules now live in `labAccess.ts`,
+  // where they are tested without a browser.
   const registersUnits = can('instruments.create');
+  const principal = {
+    canRun: can('calibration.run'),
+    canViewInstruments: can('instruments.view'),
+    canCreateInstrument: registersUnits,
+    canReview: can('calibration.review'),
+  };
   const inLaboratory = path.startsWith('/lab');
   const unitShelf = path === '/lab/units';
   useEffect(() => {
-    if (!ready || !session || inLaboratory === false) return;
-    if (operator) return;
-    if (unitShelf && registersUnits) return;
+    if (!ready || !session || !inLaboratory) return;
+    // a role the laboratory has nothing for (no register, no work, no appointment of
+    // units) is taken to its own screen rather than left on a page it cannot use
+    const welcome = unitShelf ? mayOpenShelf(principal) : mayOpenUnit(principal);
+    if (welcome) return;
     router.replace(session.roles.includes('QA_APPROVER') ? '/qa' : '/');
-  }, [ready, session, operator, registersUnits, unitShelf, inLaboratory, router]);
+  }, [
+    ready,
+    session,
+    inLaboratory,
+    unitShelf,
+    principal.canRun,
+    principal.canViewInstruments,
+    principal.canCreateInstrument,
+    principal.canReview,
+    router,
+  ]);
 
   if (isLogin) return <>{children}</>;
 

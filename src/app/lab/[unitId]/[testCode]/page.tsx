@@ -593,7 +593,10 @@ export default function TestWorkbenchPage() {
           </button>
           {!can('calibration.run') && (
             <span className="text-[11px]" style={{ color: 'var(--warn)' }}>
-              {t('دورك لا يملك صلاحية إدخال القراءات وتشغيل المعايرة.', 'Your role cannot enter readings or execute a calibration.')}
+              {t(
+                'أنت تقرأ هذه الصفحة فقط: إدخال القراءات وتشغيل المعايرة من عمل المنضدة، والحدود والنتائج المخزَّنة معروضة كما هي.',
+                'This page is read-only for your role: entering readings and running the calibration belong to the bench; limits and stored results are shown as they are.',
+              )}
             </span>
           )}
         </div>
