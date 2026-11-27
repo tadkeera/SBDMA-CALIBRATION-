@@ -56,7 +56,7 @@ async def test_a_new_unit_receives_the_next_circle_number_and_a_label(client, pr
     assert created.status_code == 201, created.text
     unit = created.json()["data"]
     assert unit["device_number"] == 2
-    assert unit["label_en"] == f"{first['category']} (2)"
+    assert unit["label_en"] == "HPLC (2)"
     # the asset code was composed, not demanded from the operator
     assert unit["asset_code"].endswith("002")
 
@@ -302,7 +302,9 @@ async def test_a_unit_registered_from_another_department_is_numbered_from_one(
     # unique across the register: the department is spelt into it rather than the
     # registration being refused for a reason the operator could not act on.
     assert unit["asset_code"] == f"HPLC-UV-001-{qa['code']}"
-    assert unit["label_en"] == "HPLC-UV (1)"
+    # the label is the bench name, not the filing name: the register files HPLC-UV, the
+    # laboratory says HPLC (1)
+    assert unit["label_en"] == "HPLC (1)"
     assert unit["department_id"] == qa["id"]
 
 

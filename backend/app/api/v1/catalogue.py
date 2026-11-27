@@ -157,8 +157,13 @@ async def create_instrument(
         )
     ).scalar_one()
     device_number = int(taken or 0) + 1
-    label_en = (payload.label_en or "").strip() or f"{payload.category} ({device_number})"
-    label_ar = (payload.label_ar or "").strip() or f"{payload.category} ({device_number})"
+    # The bench name, not the filing name: the register files a unit under its category
+    # (``HPLC-UV``, ``UV-VIS``) but the laboratory calls it ``HPLC (2)``. A label the caller
+    # supplied wins; otherwise the short name is composed here, so a unit created through
+    # the API reads the same on its tile as one created through the screen.
+    short_name = (payload.category or "").split("-")[0].strip() or payload.category
+    label_en = (payload.label_en or "").strip() or f"{short_name} ({device_number})"
+    label_ar = (payload.label_ar or "").strip() or f"{short_name} ({device_number})"
     asset_code = (payload.asset_code or "").strip() or f"{payload.category}-{device_number:03d}"
     # The circle number is the department's own sequence; the register code is unique across
     # the whole register (uq_instruments_asset_code). The two occasionally disagree: the

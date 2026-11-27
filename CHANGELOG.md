@@ -66,6 +66,10 @@
   إخفاء يعتمد على الواجهة وحدها.
 
 ### قاعدة البيانات
+- `0012_instrument_short_labels.py`: تصحيح تسمية الأجهزة المسجَّلة سابقاً إلى اسم المنضدة
+  (`HPLC (1)` بدل `HPLC-UV (1)`). يمسّ فقط التسميات التي وُلِّدت آلياً بالشكل
+  `<category> (<n>)`، ولا يمسّ تسمية كتبها إنسان. الهبوط يعيد الصيغة السابقة — الترحيل
+  قابل للعكس في الاتجاهين ومُختبَر بهما.
 - `0011_instrument_labels.py`: أعمدة `label_ar`, `label_en`, `device_number` على `instruments`،
   قيد `uq_instrument_dept_number`، قيد `ck_instruments_device_number_positive`، فهرس
   `ix_instruments_device_number`، وترقيم الأجهزة القائمة. الهبوط يحذف ما أُضيف فقط (لا جداول
