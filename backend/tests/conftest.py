@@ -28,6 +28,7 @@ os.environ.setdefault("LOG_JSON", "false")
 
 PASSWORDS = {
     "admin": "Adm1n-Str0ng-Pass!2026",
+    "sys.admin": "Sys-Adm1n-Str0ng-Pass!2026",
     "qa.manager": "QaMgr-Str0ng-Pass!2026",
     "qa.officer": "QaOff-Str0ng-Pass!2026",
     "supervisor.phys": "Sup-Str0ng-Pass!2026",

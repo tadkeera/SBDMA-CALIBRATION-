@@ -267,7 +267,7 @@ export default function FlowRatePage() {
     return (
       <Card title={t('تعذر تحميل تعريف الاختبار', 'The test definition could not be loaded')}>
         <p className="text-[13px]" style={{ color: 'var(--fail)' }}>{loadError}</p>
-        <Link href="/lab" className="btn btn-ghost mt-3">
+        <Link href="/lab/units" className="btn btn-ghost mt-3">
           <ArrowLeft size={15} /> {t('العودة إلى المختبر', 'Back to the laboratory')}
         </Link>
       </Card>
@@ -297,7 +297,7 @@ export default function FlowRatePage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Link href="/lab" className="btn btn-ghost">
+          <Link href="/lab/units" className="btn btn-ghost">
             <ArrowLeft size={15} /> {t('لوحة المختبر', 'Laboratory')}
           </Link>
         </div>

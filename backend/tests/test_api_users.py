@@ -18,8 +18,18 @@ REASON = "إدارة حساب مستخدم وفق سياسة الصلاحيات 
 
 
 async def _admin(client):
-    """A SYSTEM_ADMIN session — holds users.manage but no approval authority."""
+    """The super administrator: runs the system, and may appoint an approver.
+
+    It holds ``authority.grant``, which is what the laboratory asked for — an
+    administrator who can hand the QA signature to someone during an absence. It still
+    cannot sign a run it executed itself (see tests/test_api_runs.py).
+    """
     return await _login(client, "admin")
+
+
+async def _sysadmin(client):
+    """A SYSTEM_ADMIN session — accounts and equipment, but no signature of its own."""
+    return await _login(client, "sys.admin")
 
 
 async def _create(client, session, **overrides):
@@ -121,40 +131,106 @@ async def test_weak_password_is_refused_with_every_rule(client, prepared_db):
 # ───────────────────────── privilege escalation ──────────────────────────── #
 
 
-async def test_admin_cannot_create_an_approver_account(client, prepared_db):
-    """The administrator has no approval authority, so it may not mint one.
+async def test_the_administrator_of_accounts_may_appoint_an_approver(client, prepared_db):
+    """Release 2.4.0: an administrator of the system *may* award approval authority.
 
-    Otherwise one person could create a QA account, sign in as it, and approve
-    their own calibration — the exact scenario 21 CFR Part 11 forbids.
+    The laboratory's own rule changed. Both administrative offices — the super
+    administrator and the administrator of accounts and equipment — hold
+    ``authority.grant`` and may create a QA approver, because the account that will sign
+    afterwards is a different person: what Part 11 forbids is one person signing their own
+    work, and that refusal is a run-level rule the database enforces (checked in
+    ``test_release_2_4_0.py``), not a rule about who may create an account.
     """
-    admin = await _admin(client)
-    response = await _create(client, admin, roles=["QA_APPROVER"])
-    assert response.status_code == 403, response.text
-    err = response.json()["errors"][0]
-    assert err["code"] == "PERMISSION_DENIED"
-    assert "approval" in err["message_en"].lower() or "اعتماد" in err["message_ar"]
+    admin = await _sysadmin(client)
+    response = await _create(
+        client,
+        admin,
+        username="appointed.qa",
+        email="appointed.qa@sbdma.gov.ye",
+        roles=["QA_APPROVER"],
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["roles"] == ["QA_APPROVER"]
+
+    # the decision is audited, with the granting actor named
+    audit = await client.get(
+        "/api/v1/audit", headers=admin["hash"], params={"action": "USER_CREATED"}
+    )
+    assert any(row["actor_label"] == "sys.admin" for row in audit.json()["data"])
 
 
-async def test_admin_cannot_escalate_an_existing_user_to_approver(client, prepared_db):
-    admin = await _admin(client)
-    created = await _create(client, admin, username="promote.me", email="promote@sbdma.gov.ye")
+async def test_the_administrator_of_accounts_may_promote_an_existing_user(client, prepared_db):
+    """The same grant, applied to an account that already exists.
+
+    A viewer promoted to QA approver is the ordinary case: the laboratory hires its second
+    approver and gives the office to a member of staff who already has an account.
+    """
+    admin = await _sysadmin(client)
+    created = await _create(
+        client, admin, username="promote.me", email="promote@sbdma.gov.ye", roles=["VIEWER"]
+    )
     uid = created.json()["data"]["id"]
     response = await client.patch(
         f"/api/v1/users/{uid}",
         headers=admin["hash"],
         json={"roles": ["QA_APPROVER"], "reason": REASON},
     )
-    assert response.status_code == 403
-    # and the role really did not change
+    assert response.status_code == 200, response.text
     listing = await client.get("/api/v1/users", headers=admin["hash"])
     row = next(u for u in listing.json()["data"] if u["id"] == uid)
-    assert row["roles"] == ["ANALYST"]
+    assert row["roles"] == ["QA_APPROVER"]
 
 
 async def test_admin_cannot_assign_a_role_above_its_own_rank(client, prepared_db):
-    admin = await _admin(client)
+    admin = await _sysadmin(client)
     response = await _create(client, admin, roles=["SUPER_ADMIN"])
     assert response.status_code == 403
+
+
+async def test_super_admin_may_appoint_an_approver(client, prepared_db):
+    """The grant the laboratory asked for, and its audit trail.
+
+    A super administrator may create a QA account directly — that is how a laboratory with
+    one QA manager survives an absence. The refusal that remains is the one Part 11 is
+    about: nobody signs a run they executed, and a *system* administrator still cannot
+    mint a signature it does not hold.
+    """
+    root = await _admin(client)
+    response = await _create(
+        client, root, username="second.qa", email="second.qa@sbdma.gov.ye", roles=["QA_APPROVER"]
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["data"]["roles"] == ["QA_APPROVER"]
+
+    # and the creation is in the audit chain with the granting actor named
+    audit = await client.get("/api/v1/audit", headers=root["hash"], params={"action": "USER_CREATED"})
+    assert any(row["actor_label"] == "admin" for row in audit.json()["data"])
+
+
+async def test_an_approver_may_not_appoint_an_administrator(client, prepared_db):
+    """The refusal that remains: an approval office may not hand out the administration.
+
+    A QA approver may appoint another approver — the office needs that to survive an
+    absence — but may not make someone a system administrator. The refusal names the
+    permission that stood in the way, so the request can be routed to an administrator.
+    """
+    qa = await _login(client, "qa.manager")
+    above = await _create(
+        client, qa, username="up.rank", email="up.rank@sbdma.gov.ye", roles=["SUPER_ADMIN"]
+    )
+    assert above.status_code in (403, 404)
+    admin_role = await _create(
+        client,
+        qa,
+        username="up.admin",
+        email="up.admin@sbdma.gov.ye",
+        roles=["SYSTEM_ADMIN"],
+    )
+    assert admin_role.status_code == 403
+    details = admin_role.json()["errors"][0]["details"]
+    # the refusal names what the actor does not hold, which is what `assert_can_grant`
+    # reports; the rank check would only say "above your role"
+    assert details.get("required") == "users.manage" or details.get("blocked_permissions")
 
 
 async def test_unknown_role_is_rejected_as_validation(client, prepared_db):

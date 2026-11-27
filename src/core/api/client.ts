@@ -181,6 +181,99 @@ export interface ServerInstrument {
   next_due_date: string | null;
   status: 'ACTIVE' | 'OUT_OF_SERVICE' | 'UNDER_MAINTENANCE';
   d2_lamp_hours: number;
+  /** the gallery tile — "HPLC (2)" and the number in the red circle */
+  label_ar?: string | null;
+  label_en?: string | null;
+  device_number?: number | null;
+}
+
+/** One tested field of a protocol test, as stored in the approved protocol. */
+export interface ServerTestField {
+  key: string;
+  label_ar: string;
+  label_en: string;
+  type: 'number' | 'integer' | 'series' | 'text' | 'select' | 'boolean' | 'spectrum';
+  unit?: string | null;
+  length?: number | null;
+  options?: string[] | null;
+  required?: boolean;
+  hint_ar?: string | null;
+}
+
+/** A limit stored against a test, with the source it came from. */
+export interface ServerAcceptanceLimit {
+  id: string;
+  metric_key: string;
+  source_type: string;
+  operator: string;
+  min_value: string | null;
+  max_value: string | null;
+  unit: string;
+  approval_status: string;
+}
+
+/** GET /tests/{code}/definition — the page renders itself from this answer. */
+export interface ServerTestDefinition {
+  test_code: string;
+  name_ar: string;
+  name_en: string;
+  module: string;
+  standard_ref: string;
+  is_active: boolean;
+  protocol_code: string;
+  protocol_version: string;
+  limit_source_policy: string;
+  fields: ServerTestField[];
+  formulas: Array<{
+    key: string;
+    expression: string;
+    description_ar: string;
+    description_en: string;
+    decimals: number;
+  }>;
+  metrics: string[];
+  chart: string;
+  procedure_en: string[];
+  procedure_ar: string[];
+  limits: ServerAcceptanceLimit[];
+  resolved_limits: Record<string, ServerAcceptanceLimit>;
+}
+
+/** One metric as the server judged it. */
+export interface ServerEvaluatedMetric {
+  metric_key: string;
+  value: string | null;
+  unit: string;
+  applied_limit_id: string | null;
+  applied_source: string | null;
+  comparator: string;
+  limit_text: string;
+  status: Status;
+  message_ar: string | null;
+}
+
+export interface ServerSeriesStatistics {
+  n: number;
+  mean: string | null;
+  sd: string | null;
+  rsd_pct: string | null;
+  min: string;
+  max: string;
+  deviation: string | null;
+}
+
+/** POST /tests/{code}/evaluate — the server's own recomputation, nothing stored. */
+export interface ServerTestEvaluation {
+  test_code: string;
+  status: Status;
+  outputs: Record<string, unknown>;
+  metrics: ServerEvaluatedMetric[];
+  notes_ar: string | null;
+  signals: Record<string, unknown>;
+  statistics: Record<string, ServerSeriesStatistics>;
+  protocol_code: string;
+  protocol_version: string;
+  limit_source_policy: string;
 }
 
 export interface ServerReferenceEquipment {
@@ -604,6 +697,32 @@ export const api = {
 
   // catalogue
   instruments: () => request<ServerInstrument[]>('/instruments'),
+  /**
+   * Register a unit. The server assigns the next circle number for the department and
+   * composes the label when none is sent; the client never chooses the number itself,
+   * because two browsers adding a unit at the same moment must not both receive (2).
+   */
+  /**
+   * Register a unit.
+   *
+   * The department and the register code are *not* parameters: the server derives the
+   * department from the signed-in principal and composes the code from the category and
+   * the number it issues. Sending them from here would let the browser name its own
+   * identity, which is the one thing a register must not allow.
+   */
+  createInstrument: (body: {
+    category: string;
+    manufacturer: string;
+    model: string;
+    serial_number: string;
+    part_number?: string | null;
+    software_version?: string | null;
+    calibration_freq_days?: number;
+    label_ar?: string | null;
+    label_en?: string | null;
+    /** Only for a principal that is not department-scoped (a supervisor or an admin). */
+    department_id?: string;
+  }) => request<ServerInstrument>('/instruments', { method: 'POST', body: JSON.stringify(body) }),
   referenceEquipment: () => request<ServerReferenceEquipment[]>('/reference-equipment'),
   referenceStandards: () => request<ServerReferenceStandard[]>('/reference-standards'),
   departments: () =>
@@ -704,6 +823,30 @@ export const api = {
   },
   run: (runId: string) => request<ServerRun>(`/runs/${runId}`),
   pendingApprovals: () => request<ServerRunSummary[]>('/runs/pending/approvals'),
+
+  // per-test workbench — definition and live recomputation for one test on one unit
+  testDefinition: (
+    testCode: string,
+    params: { instrumentId?: string; limitSourcePolicy?: string } = {},
+  ) => {
+    const query = new URLSearchParams();
+    if (params.instrumentId) query.set('instrument_id', params.instrumentId);
+    if (params.limitSourcePolicy) query.set('limit_source_policy', params.limitSourcePolicy);
+    const suffix = query.size ? `?${query}` : '';
+    return request<ServerTestDefinition>(`/tests/${testCode}/definition${suffix}`);
+  },
+  testEvaluate: (
+    testCode: string,
+    body: {
+      raw_inputs: Record<string, unknown>;
+      instrument_id?: string | null;
+      limit_source_policy?: string;
+    },
+  ) =>
+    request<ServerTestEvaluation>(`/tests/${testCode}/evaluate`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
 
   // flow rate (T02) — the dedicated page's own two endpoints
   flowRateDefinition: () => request<ServerFlowRateDefinition>('/flow-rate'),

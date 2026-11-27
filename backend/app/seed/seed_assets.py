@@ -26,6 +26,12 @@ INSTRUMENT = {
     "serial_number": "L22976302572",
     "software_version": "LabSolutions",
     "calibration_freq_days": 180,
+    #: The laboratory's own numbering. The first registered unit is HPLC (1), and the
+    #: number is stored rather than derived so that adding or retiring a unit never
+    #: renumbers the ones still in service.
+    "device_number": 1,
+    "label_ar": "HPLC (1)",
+    "label_en": "HPLC (1)",
     "configuration_jsonb": {
         "detector": "SPD-M30A (UV-VIS PDA)",
         "pump": "LC-2050C quaternary low-pressure gradient",
@@ -116,6 +122,7 @@ async def seed_assets(session: AsyncSession) -> dict[str, int]:
                 **{k: INSTRUMENT[k] for k in (
                     "asset_code", "category", "manufacturer", "model",
                     "part_number", "serial_number", "software_version",
+                    "device_number", "label_ar", "label_en",
                 )},
             )
         )

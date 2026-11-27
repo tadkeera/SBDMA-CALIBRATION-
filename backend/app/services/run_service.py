@@ -48,9 +48,18 @@ from app.models.assets import Instrument, ReferenceEquipment
 from app.models.protocol import AcceptanceLimit, CalibrationProtocol, FormulaDefinition, TestDefinition
 from app.models.rbac import User
 from app.models.runs import CalibrationRun, CalibrationTestResult
+from app.services.approval_notice_service import ApprovalNoticeService
 from app.services.audit_service import AuditService
 
 log = get_logger("sbdma.runs")
+
+
+def _unit_label(instrument: Instrument | None) -> str:
+    """How a notice names the unit: "HPLC (2)" when labelled, the asset code otherwise."""
+    if instrument is None:
+        return "—"
+    label = instrument.label_en or instrument.label_ar
+    return f"{label} · {instrument.asset_code}" if label else instrument.asset_code
 
 
 class RunService:
@@ -467,6 +476,21 @@ class RunService:
         )
         await self.session.flush()
 
+        # A saved calibration is a request for two signatures. Notifying only at that
+        # point — after the results are stored — means a notice never refers to a run
+        # that failed to save.
+        instrument_row = await self.session.get(Instrument, run.instrument_id)
+        await ApprovalNoticeService(self.session).run_executed(
+            run_id=run.id,
+            execution_code=run.execution_code,
+            department_id=run.department_id,
+            instrument_label=_unit_label(instrument_row),
+            overall=outcome.overall,
+            test_codes=[t.code for t in scoped],
+            actor_id=principal.user_id,
+            actor_label=principal.username,
+        )
+
         if outcome.overall == FAIL:
             log.warning(
                 "calibration run failed (OOS)",
@@ -532,6 +556,17 @@ class RunService:
             ip_address=ip,
         )
         await self.session.flush()
+
+        instrument_row = await self.session.get(Instrument, run.instrument_id)
+        await ApprovalNoticeService(self.session).run_reviewed(
+            run_id=run.id,
+            execution_code=run.execution_code,
+            department_id=run.department_id,
+            instrument_label=_unit_label(instrument_row),
+            overall=run.overall_status,
+            reviewer_label=principal.username,
+            actor_id=principal.user_id,
+        )
         return run
 
     async def _deviation_context(self, run: CalibrationRun) -> dict:
@@ -668,6 +703,18 @@ class RunService:
             },
             reason=reason,
             ip_address=ip,
+        )
+
+        # The certificate becomes downloadable without a DRAFT watermark the moment this
+        # transaction commits; the bench is told so it does not go looking for a sheet
+        # that still says "pending".
+        await ApprovalNoticeService(self.session).run_released(
+            run_id=run.id,
+            execution_code=run.execution_code,
+            department_id=run.department_id,
+            instrument_label=_unit_label(await self.session.get(Instrument, run.instrument_id)),
+            approver_label=principal.username,
+            actor_id=principal.user_id,
         )
 
         # advance the instrument calibration cycle

@@ -266,6 +266,10 @@ export const PERMISSIONS = [
   'deviations.raise',
   'deviations.investigate',
   'deviations.close',
+  // granting an approval signature to another account (the administrator's "QA APPROVED"
+  // authority). Separate from users.manage on purpose — see app/core/rbac.py.
+  'authority.grant',
+  'tests.manage_status',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -278,11 +282,22 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     'instruments.delete',
     'limits.manage',
     'formulas.manage',
+    'tests.manage_status',
     'reports.export',
     'audit.view',
     'settings.manage',
     'users.manage',
     'maintenance.manage',
+    'attachments.manage',
+    // the approval office reads results and handles deviations; the administrator that
+    // may appoint an approver must hold the same, or it could not confer them (2.4.0)
+    'calibration.review',
+    'deviations.raise',
+    'deviations.investigate',
+    'deviations.close',
+    // 2.4.0: an administrator may award the QA signature. It still holds no signature of
+    // its own — it cannot approve a run — and nobody signs a run they executed.
+    'authority.grant',
   ],
   ANALYST: ['instruments.view', 'calibration.run', 'reports.export', 'deviations.raise'],
   SUPERVISOR: ['instruments.view', 'calibration.run', 'calibration.review', 'reports.export'],
@@ -290,6 +305,9 @@ export const ROLE_PERMISSIONS: Record<RoleCode, Permission[]> = {
     'instruments.view',
     'calibration.review',
     'calibration.approve',
+    // QA may appoint a second approver: the office that owns the signature decides who
+    // else may hold it, which is how a one-person QA unit survives an absence.
+    'authority.grant',
     'limits.approve',
     'limits.manage',
     'reports.export',

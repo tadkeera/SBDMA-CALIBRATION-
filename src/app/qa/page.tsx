@@ -476,6 +476,55 @@ export default function QaPage() {
                         result={run.results.find((r) => r.testCode === activeTest)}
                       />
                     </Card>
+                    {/*
+                      The per-test certificate, for the reviewer and for QA. The draft is
+                      watermarked and carries the pending signatures; the full certificate
+                      without the watermark is issued only for a locked, QA-approved run, and
+                      the server refuses it otherwise (409) rather than trusting the button.
+                    */}
+                    <Card
+                      title={t('شهادة الاختبار (PDF)', 'Test certificate (PDF)')}
+                      subtitle={t(
+                        'المسودة تحمل علامة DRAFT وحالة الاعتماد؛ الشهادة الكاملة بدون علامة مسودة بعد اعتماد ضمان الجودة.',
+                        'The draft carries the DRAFT watermark and the pending signatures; the full certificate, without the watermark, follows QA approval.',
+                      )}
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <button
+                          className="btn btn-ghost"
+                          disabled={!canExport}
+                          onClick={() =>
+                            downloadReport(
+                              `/reports/runs/${run.id}/tests/${activeTest}/certificate.pdf?stage=PROVISIONAL`,
+                              `${run.executionCode}-${activeTest}-draft.pdf`,
+                            ).catch((e: unknown) =>
+                              notify('error', t('تعذر إصدار المسودة', 'Draft failed'), e instanceof ApiError ? e.text(lang) : String(e)),
+                            )
+                          }
+                        >
+                          <FileSignature size={13} /> {t('مسودة موسومة', 'Watermarked draft')}
+                        </button>
+                        <button
+                          className="btn btn-primary"
+                          disabled={!run.isLocked || !canExport}
+                          onClick={() =>
+                            downloadReport(
+                              `/reports/runs/${run.id}/tests/${activeTest}/certificate.pdf`,
+                              `${run.executionCode}-${activeTest}-certificate.pdf`,
+                            ).catch((e: unknown) =>
+                              notify('error', t('تعذر إصدار الشهادة', 'Certificate failed'), e instanceof ApiError ? e.text(lang) : String(e)),
+                            )
+                          }
+                        >
+                          <FileSignature size={13} /> {t('الشهادة الكاملة', 'Full certificate')}
+                        </button>
+                        {!run.isLocked && (
+                          <span className="text-[10.5px]" style={{ color: 'var(--warn)' }}>
+                            {t('التشغيل لم يُعتمد نهائياً بعد — الشهادة الكاملة محجوبة.', 'The run is not finally approved — the full certificate is withheld.')}
+                          </span>
+                        )}
+                      </div>
+                    </Card>
                   </>
                 )}
               </>

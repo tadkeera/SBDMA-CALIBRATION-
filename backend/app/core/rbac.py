@@ -39,7 +39,29 @@ PERMISSIONS: Final[tuple[str, ...]] = (
     "deviations.raise",
     "deviations.investigate",
     "deviations.close",
+    # Granting approval authority is a governance act in its own right, so it is a
+    # permission instead of something implied by users.manage. Since release 2.4.0 the
+    # super administrator *and* the administrator of accounts both hold it (the laboratory
+    # asked for that explicitly), and QA holds it so a second approver can be appointed
+    # during an absence. What remains forbidden is stated positively elsewhere: nobody may
+    # grant a permission they do not hold (assert_can_grant), and nobody may sign a run they
+    # executed (segregation of duties, checked on every approval and by the database).
+    "authority.grant",
 )
+
+#: Permissions that constitute an electronic signature on a measurement. Granting any of
+#: them to another account is itself an audited governance decision, and is checked
+#: against ``authority.grant`` (the requester) and ``assert_can_grant`` (where the
+#: requester legitimately holds it — QA may appoint a second QA officer).
+SIGNOFF_PERMISSIONS: frozenset[str] = frozenset(
+    {"calibration.approve", "limits.approve", "authority.grant"}
+)
+
+#: Roles whose responsibility is *approval or administration*, not measurement. A member
+#: of these roles is not counted as an operator of the laboratory, and the per-unit
+#: laboratory screen is hidden from them: QA reads results for approval on the approval
+#: screen, it does not enter readings on the bench.
+OPERATOR_ROLES: frozenset[str] = frozenset({"ANALYST", "SUPERVISOR"})
 
 ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
     "SUPER_ADMIN": PERMISSIONS,
@@ -57,6 +79,21 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "users.manage",
         "maintenance.manage",
         "attachments.manage",
+        # The approval office reads results, raises deviations against what it found and
+        # investigates them. An administrator that may appoint an approver must hold the
+        # same, or the appointment it is trusted to make would require permissions its own
+        # role cannot confer. None of these is a signature: reading a result, raising a
+        # deviation and investigating it are what quality staff do before they decide.
+        # ``audit.view`` is already held by this role.
+        "calibration.review",
+        "deviations.raise",
+        "deviations.investigate",
+        "deviations.close",
+        # Release 2.4.0: the laboratory's rule is that an administrator may give the QA
+        # signature to a second officer, so this office holds the grant. It still holds no
+        # signature of its own (no calibration.approve / limits.approve), and it can never
+        # sign a run: approval authority is a run-level fact about a person, not a role.
+        "authority.grant",
     ),
     "ANALYST": (
         "instruments.view",
@@ -75,6 +112,10 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
         "instruments.view",
         "calibration.review",
         "calibration.approve",
+        # QA is the office that can appoint a second approver: that is how a laboratory
+        # with one QA manager survives an absence without the administrator minting
+        # signatures it does not hold.
+        "authority.grant",
         "limits.approve",
         "limits.manage",
         "reports.export",
@@ -95,6 +136,15 @@ ROLE_PERMISSIONS: Final[dict[str, tuple[str, ...]]] = {
 }
 
 SUPERVISOR_ROLES: Final[frozenset[str]] = frozenset({"SUPER_ADMIN", "QA_APPROVER", "SYSTEM_ADMIN"})
+#: Ranks are about *authority over people*, and the two administrative offices share the
+#: top of it. Release 2.4.0 changed the rule that a super administrator is the only office
+#: able to award an electronic signature: a system administrator that the laboratory has
+#: trusted with accounts and equipment may also award approval authority. What still keeps
+#: this safe is not the rank but two sharper rules — nobody may grant a permission they do
+#: not hold themselves (``assert_can_grant``), and nobody may sign a run they executed
+#: (segregation of duties, enforced at the run level and in the database). The approver
+#: therefore sits below both administrative offices: QA signs measurements, it does not
+#: administer accounts.
 ROLE_RANK: Final[dict[str, int]] = {
     "VIEWER": 0,
     "ENGINEERING_SERVICE": 1,
@@ -166,6 +216,19 @@ class Principal:
 
     def is_supervisor(self) -> bool:
         return bool(set(self.roles) & SUPERVISOR_ROLES)
+
+    @property
+    def is_operator(self) -> bool:
+        """True when this actor is a bench operator of the laboratory.
+
+        The per-unit laboratory screen is reached through this property, not through
+        ``calibration.run`` alone: QA and the administrators also hold that permission
+        (the super administrator holds all of them), but they do not enter readings on a
+        unit and must not see the laboratory gallery. A multi-role account that holds
+        ANALYST or SUPERVISOR *alongside* QA stays an operator — the capability is
+        additive, and the screen is one the person legitimately works on.
+        """
+        return bool(set(self.roles) & OPERATOR_ROLES)
 
     # --- department isolation (IDOR protection) ----------------------------
     def assert_department(self, target_department_id: UUID | None) -> None:

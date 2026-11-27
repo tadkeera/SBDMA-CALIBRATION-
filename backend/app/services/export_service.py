@@ -385,6 +385,27 @@ class ExportService:
         }
         payload["readings"] = readings
         payload["metrics"] = metrics_payload
+        # The chart page reads the stored row directly rather than the formatted table:
+        # "0.9998" is what is printed, 0.9998 is what is drawn, and neither is re-entered.
+        payload["raw_inputs"] = dict(result.raw_inputs_jsonb or {})
+        payload["outputs"] = dict(result.calculated_outputs_jsonb or {})
+        payload["metrics_structured"] = [
+            {
+                "metric_key": metric.get("metric_key"),
+                "value": metric.get("value"),
+                "unit": metric.get("unit"),
+                "limit_text": metric.get("limit_text"),
+                "applied_source": metric.get("applied_source"),
+                "status": metric.get("status"),
+                # bounds, when the stored evaluation carries them; the chart falls back to
+                # parsing the printed limit text for older rows that do not
+                "min_value": metric.get("min_value"),
+                "max_value": metric.get("max_value"),
+                "comparator": metric.get("comparator"),
+            }
+            for metric in (result.metric_evaluations_jsonb or [])
+        ]
+        payload["chart"] = (definition.chart_config_jsonb or {}).get("type") or "none"
         payload["stage"] = "PROVISIONAL" if provisional else "OFFICIAL"
         payload["approval"] = self._approval_state(data)
         # the renderer resolves the page total itself (two passes) so the footer is right

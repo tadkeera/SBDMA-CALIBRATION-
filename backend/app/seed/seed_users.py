@@ -27,7 +27,13 @@ from app.models.rbac import LabDepartment, Role, User
 FORCE_PASSWORD_CHANGE = os.environ.get("SBDMA_SEED_FORCE_PASSWORD_CHANGE", "0") == "1"
 
 SEED_USERS = (
-    ("admin", "admin@sbdma.gov.ye", "مدير النظام", "System Administrator", "QA", "SUPER_ADMIN", "SBDMA_ADMIN_PASSWORD"),
+    ("admin", "admin@sbdma.gov.ye", "المدير الأعلى للنظام", "Super Administrator", "QA", "SUPER_ADMIN", "SBDMA_ADMIN_PASSWORD"),
+    # A system administrator that runs accounts and equipment but holds no signature of
+    # its own. It exists so that "the administrator cannot appoint an approver" is a
+    # statement about a real account rather than about a role with no user; the approval
+    # authority is granted by the super administrator or by QA (permission
+    # authority.grant), never by the person who only manages accounts.
+    ("sys.admin", "sys.admin@sbdma.gov.ye", "مسؤول النظام", "System Administrator", "QA", "SYSTEM_ADMIN", "SBDMA_SYSADMIN_PASSWORD"),
     ("qa.manager", "qa.manager@sbdma.gov.ye", "مدير ضمان الجودة", "QA Manager", "QA", "QA_APPROVER", "SBDMA_QA_MANAGER_PASSWORD"),
     ("qa.officer", "qa.officer@sbdma.gov.ye", "مسؤول ضمان الجودة", "QA Officer", "QA", "QA_APPROVER", "SBDMA_QA_OFFICER_PASSWORD"),
     ("supervisor.phys", "supervisor.phys@sbdma.gov.ye", "مشرف مختبر الفيزياء", "Physics Lab Supervisor", "PHYS", "SUPERVISOR", "SBDMA_SUPERVISOR_PASSWORD"),

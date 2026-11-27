@@ -10,8 +10,20 @@ from app.schemas.common import ORMModel
 
 
 class InstrumentCreate(BaseModel):
-    department_id: uuid.UUID
-    asset_code: str = Field(min_length=3, max_length=64)
+    """A unit of laboratory equipment.
+
+    ``label_ar`` / ``label_en`` are the name the laboratory calls the unit — "HPLC (2)".
+    When they are omitted the service composes them from the category and the next free
+    circle number, so a caller that only knows the maker's details still gets a tile
+    whose name matches the rest of the gallery.
+    """
+
+    #: Both are optional on purpose. The department defaults to the caller's own (a
+    #: department-scoped principal may not register a unit into someone else's lab), and
+    #: the asset code defaults to ``CATEGORY-NN`` from the circle number the server
+    #: assigns — the register's identity must not depend on the operator inventing a code.
+    department_id: uuid.UUID | None = None
+    asset_code: str | None = Field(default=None, min_length=3, max_length=64)
     category: str = Field(min_length=2, max_length=64)
     manufacturer: str = Field(min_length=2, max_length=120)
     model: str = Field(min_length=1, max_length=160)
@@ -22,6 +34,8 @@ class InstrumentCreate(BaseModel):
     calibration_freq_days: int = Field(default=180, ge=1, le=3650)
     last_calibration_date: date | None = None
     d2_lamp_hours: int = Field(default=0, ge=0, le=100000)
+    label_ar: str | None = Field(default=None, max_length=80)
+    label_en: str | None = Field(default=None, max_length=80)
 
 
 class InstrumentUpdate(BaseModel):
@@ -35,6 +49,8 @@ class InstrumentUpdate(BaseModel):
     last_calibration_date: date | None = None
     d2_lamp_hours: int | None = Field(default=None, ge=0)
     status: Literal["ACTIVE", "OUT_OF_SERVICE", "UNDER_MAINTENANCE"] | None = None
+    label_ar: str | None = Field(default=None, max_length=80)
+    label_en: str | None = Field(default=None, max_length=80)
 
 
 class InstrumentOut(ORMModel):
@@ -53,6 +69,10 @@ class InstrumentOut(ORMModel):
     next_due_date: date | None
     status: str
     d2_lamp_hours: int
+    #: the gallery tile: "HPLC (1)" and the number in the red circle
+    label_ar: str | None = None
+    label_en: str | None = None
+    device_number: int | None = None
 
 
 class ReferenceEquipmentOut(ORMModel):

@@ -14,7 +14,7 @@ spec:
       securityContext: { runAsNonRoot: true, runAsUser: 1001 }
       containers:
         - name: worker
-          image: ghcr.io/tadkeera/sbdma-calibration-api:2.3.0
+          image: ghcr.io/tadkeera/sbdma-calibration-api:2.4.0
           command: ['celery', '-A', 'app.worker.celery_app:celery_app', 'worker', '-l', 'INFO', '--concurrency=4', '--max-tasks-per-child=200']
           envFrom:
             - secretRef: { name: sbdma-secrets }
@@ -58,7 +58,7 @@ spec:
     spec:
       containers:
         - name: beat
-          image: ghcr.io/tadkeera/sbdma-calibration-api:2.3.0
+          image: ghcr.io/tadkeera/sbdma-calibration-api:2.4.0
           command: ['celery', '-A', 'app.worker.celery_app:celery_app', 'beat', '-l', 'INFO', '--schedule=/var/lib/celery/celerybeat-schedule']
           envFrom:
             - secretRef: { name: sbdma-secrets }

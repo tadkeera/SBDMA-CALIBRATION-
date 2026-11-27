@@ -27,6 +27,7 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.platypus import (
     KeepTogether,
+    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -44,6 +45,8 @@ from app.services.report_service import (
     _styles,
     ar,
 )
+from app.services.certificate_charts import chart_pages, drawing_flowable
+from app.services.test_certificate_charts import build_test_charts, chart_note
 
 PASS_COLOR = colors.HexColor("#16794f")
 FAIL_COLOR = colors.HexColor("#a2302a")
@@ -279,6 +282,31 @@ def build_test_certificate_pdf(payload: dict[str, Any]) -> bytes:
             story.append(Paragraph(f"Note: {test['notes_ar']}", st["note"]))
         story.append(Spacer(1, 1.8 * mm))
 
+        # ── charts ────────────────────────────────────────────────────────
+        # The figures go on their own page, after the page of values: the analyst reads
+        # the table, the reviewer looks at the shape, and neither has to scroll past the
+        # other. A test whose evidence is a sensor acknowledgement has no chart, and then
+        # no chart page is printed at all.
+        charts = build_test_charts(
+            test=test,
+            chart=str(payload.get("chart") or "none"),
+            outputs=payload.get("outputs") or {},
+            metrics=payload.get("metrics_structured") or [],
+            raw=payload.get("raw_inputs") or {},
+        )
+        if charts:
+            story.append(PageBreak())
+        story.extend(
+            chart_pages(
+                st=st,
+                charts=charts,
+                title="4 · Charts of the recorded measurement",
+                note=chart_note(bool(charts)),
+            )
+        )
+        if charts:
+            story.append(Spacer(1, 1.8 * mm))
+
         # ── conformity statement ──────────────────────────────────────────
         statement = (
             f"The measurement described above was performed on the instrument identified in section 1 against "
@@ -351,7 +379,7 @@ def build_test_certificate_pdf(payload: dict[str, Any]) -> bytes:
             Spacer(1, 1.2 * mm),
             box,
             Spacer(1, 1.6 * mm),
-            Paragraph("4 · Approval status and electronic signatures", st["h2"]),
+            Paragraph("5 · Approval status and electronic signatures", st["h2"]),
             _grid_table(
                 st,
                 ["Role", "Status", "Signed by", "Date and time", "Signature"],

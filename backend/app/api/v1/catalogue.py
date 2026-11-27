@@ -37,7 +37,7 @@ from app.core.rbac import Principal
 from app.models.assets import Instrument, ReferenceEquipment, ReferenceStandard
 from app.models.audit import AuditLog
 from app.models.protocol import AcceptanceLimit, CalibrationProtocol, TestDefinition
-from app.models.rbac import User
+from app.models.rbac import LabDepartment, User
 from app.models.runs import MaintenanceTicket
 from app.models.runs import CalibrationAttachment
 from app.core import blobstore
@@ -57,7 +57,6 @@ router = APIRouter(tags=["catalogue"])
 
 @router.get("/departments", summary="أقسام ومختبرات الهيئة")
 async def list_departments(session: SessionDep, principal: PrincipalDep):
-    from app.models.rbac import LabDepartment
 
     principal.require("instruments.view")
     rows = (
@@ -132,23 +131,59 @@ async def create_instrument(
     payload: InstrumentCreate, request: Request, session: SessionDep, principal: PrincipalDep
 ):
     principal.require("instruments.create")
-    principal.assert_department(payload.department_id)
-    existing = (
-        await session.execute(
-            select(Instrument).where(Instrument.asset_code == payload.asset_code)
+    department_id = payload.department_id or principal.department_id
+    if department_id is None:
+        raise ValidationFailedError(
+            message_ar="قسم الجهاز مطلوب",
+            message_en="The instrument department is required",
+            field="department_id",
         )
+    principal.assert_department(department_id)
+    department = await session.get(LabDepartment, department_id)
+    if department is None or department.deleted_at is not None:
+        raise ValidationFailedError(
+            message_ar="القسم غير موجود", message_en="Department not found", field="department_id"
+        )
+    last = payload.last_calibration_date
+    # The circle number is the next free one *for this department*, computed inside the
+    # request and protected by uq_instrument_dept_number: two administrators adding a
+    # unit at the same moment cannot both receive HPLC (2) — the second insert fails the
+    # constraint and is reported as a retry, never as two units sharing a number.
+    taken = (
+        await session.execute(
+            select(func.max(Instrument.device_number)).where(
+                Instrument.department_id == department_id
+            )
+        )
+    ).scalar_one()
+    device_number = int(taken or 0) + 1
+    label_en = (payload.label_en or "").strip() or f"{payload.category} ({device_number})"
+    label_ar = (payload.label_ar or "").strip() or f"{payload.category} ({device_number})"
+    asset_code = (payload.asset_code or "").strip() or f"{payload.category}-{device_number:03d}"
+    # The circle number is the department's own sequence; the register code is unique across
+    # the whole register (uq_instruments_asset_code). The two occasionally disagree: the
+    # first unit of a second department is that department's number 1, and the code composed
+    # from it may already belong to another department's number 1. Rather than refusing a
+    # registration the operator cannot act on, the department is spelt into the code — but
+    # only when a laboratory-supplied code did not cause the clash.
+    existing = (
+        await session.execute(select(Instrument).where(Instrument.asset_code == asset_code))
     ).scalar_one_or_none()
+    if existing is not None and not (payload.asset_code or "").strip():
+        asset_code = f"{asset_code}-{department.code}"
+        existing = (
+            await session.execute(select(Instrument).where(Instrument.asset_code == asset_code))
+        ).scalar_one_or_none()
     if existing is not None:
         raise ValidationFailedError(
             message_ar="رمز الأصل مسجل مسبقاً",
             message_en="Asset code already registered",
             field="asset_code",
         )
-    last = payload.last_calibration_date
     instrument = Instrument(
         id=uuid.uuid4(),
-        department_id=payload.department_id,
-        asset_code=payload.asset_code.strip(),
+        department_id=department_id,
+        asset_code=asset_code,
         category=payload.category,
         manufacturer=payload.manufacturer,
         model=payload.model,
@@ -161,6 +196,9 @@ async def create_instrument(
         next_due_date=last + timedelta(days=payload.calibration_freq_days) if last else None,
         status="ACTIVE",
         d2_lamp_hours=payload.d2_lamp_hours,
+        device_number=device_number,
+        label_en=label_en,
+        label_ar=label_ar,
     )
     session.add(instrument)
     await session.flush()
@@ -176,6 +214,12 @@ async def create_instrument(
             "asset_code": instrument.asset_code,
             "model": instrument.model,
             "serial": instrument.serial_number,
+            "device_number": instrument.device_number,
+            "label": instrument.label_en,
+            # The twenty tests a unit inherits from the approved protocol of its category
+            # are recorded at registration, so the audit trail says what the tile offered
+            # on the day it was created rather than leaving it to be inferred later.
+            "tests_inherited_from_protocol": True,
         },
         reason="تسجيل جهاز جديد في سجل الأجهزة",
         ip_address=client_ip(request),
@@ -202,6 +246,14 @@ async def update_instrument(
     data = payload.model_dump(exclude_unset=True)
     for key, value in data.items():
         setattr(instrument, key, value)
+    # An empty label is not a label: fall back to "CATEGORY (n)" instead of blanking the
+    # tile the laboratory navigates by. device_number is deliberately *not* editable —
+    # it is assigned once at registration and a certificate printed against unit 2 must
+    # still find unit 2.
+    if "label_en" in data and not (data["label_en"] or "").strip():
+        instrument.label_en = f"{instrument.category} ({instrument.device_number})"
+    if "label_ar" in data and not (data["label_ar"] or "").strip():
+        instrument.label_ar = f"{instrument.category} ({instrument.device_number})"
     if "last_calibration_date" in data and data["last_calibration_date"]:
         instrument.next_due_date = data["last_calibration_date"] + timedelta(
             days=instrument.calibration_freq_days

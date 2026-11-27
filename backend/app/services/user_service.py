@@ -37,15 +37,24 @@ from app.core.exceptions import (
     PermissionDeniedError,
     ValidationFailedError,
 )
-from app.core.rbac import ROLE_PERMISSIONS, ROLE_RANK, Principal
+from app.core.rbac import ROLE_PERMISSIONS, ROLE_RANK, SIGNOFF_PERMISSIONS, Principal
 from app.core.security import hash_password, password_strength_errors
 from app.models.rbac import LabDepartment, RefreshSession, Role, User
 from app.services.audit_service import AuditService
 
-#: Roles that confer approval authority over a calibration. Administering
-#: accounts and holding these at the same time would let one person create an
-#: approver account and sign their own work — a 21 CFR Part 11 violation.
-SIGNOFF_PERMISSIONS: frozenset[str] = frozenset({"calibration.approve", "limits.approve"})
+#: Roles that confer approval authority over a calibration. Administering accounts and
+#: holding these at the same time would let one person create an approver account and
+#: sign their own work — a 21 CFR Part 11 violation. The set itself lives in the policy
+#: module (``app.core.rbac``) so the API, the seeder and the service cannot disagree.
+
+
+#: The permissions that are an approver's *personal* signature. They may be conferred by an
+#: office holding ``authority.grant`` without that office practising them, because the
+#: signature belongs to the person who will use it — that is the whole point of appointing
+#: a second approver. ``authority.grant`` itself is part of ``SIGNOFF_PERMISSIONS`` in the
+#: policy module (it is a governance act) and is granted with the role, so it is excluded
+#: from the "you must hold it to hand it over" rule by the same mechanism.
+SIGNATURE_PERMISSIONS: frozenset[str] = frozenset({"calibration.approve", "limits.approve"})
 
 
 def role_confers_signoff(role_code: str) -> bool:
@@ -73,24 +82,51 @@ class UserService:
             )
 
     def _assert_can_assign(self, principal: Principal, codes: list[str]) -> None:
+        """Every role handed out must be within the actor's own authority.
+
+        Four checks, in this order:
+
+        1. the role may not outrank the actor (``assert_role_assignable``);
+        2. a role that carries an electronic signature (``SIGNOFF_PERMISSIONS``) may only
+           be handed out by an actor holding ``authority.grant``. Since release 2.4.0 the
+           super administrator *and* the administrator of accounts both hold it, because
+           the laboratory asked that an administrator be able to award the QA signature;
+           QA holds it so a second approver can be appointed during an absence;
+        3. a role's signature permissions must be *delegable affairs*, not personal ones:
+           ``authority.grant`` is held by QA and is granted with the role, while
+           ``calibration.approve`` / ``limits.approve`` are the new approver's own to
+           exercise. Every other permission a role carries must be held by the actor — an
+           administrator may award the approval office without first being a QA approver,
+           which is exactly the decision the laboratory wanted to be possible;
+        4. the run-level rule that keeps this safe is elsewhere and unchanged: nobody signs
+           a calibration they executed (``assert_segregation_of_duties``, enforced again by
+           the database). Thus an administrator who appoints an approver still cannot
+           approve their own work, because they do not hold ``calibration.approve`` at all.
+        """
         for code in codes:
             principal.assert_role_assignable(code)
-            if role_confers_signoff(code):
+            carried = ROLE_PERMISSIONS.get(code, ())
+            signature = SIGNATURE_PERMISSIONS & set(carried)
+            if signature and not principal.has("authority.grant"):
                 raise PermissionDeniedError(
                     message_ar=(
-                        "لا يجوز لمن يدير الحسابات أن يمنح صلاحية اعتماد المعايرة — "
-                        "فصل المهام يمنع أن ينشئ المسؤول حساباً يعتمد به عمله"
+                        "لا يجوز لمن لا يملك صلاحية منح الاعتماد أن يمنح دوراً يحمل "
+                        "توقيع اعتماد — يمنح هذا الدور مدير النظام الأعلى أو مسؤول النظام "
+                        "أو ضمان الجودة"
                     ),
                     message_en=(
-                        "An account administrator may not grant calibration approval "
-                        "authority: separation of duties forbids creating an approver "
-                        "for your own work"
+                        "Only an office holding authority.grant — the super administrator, "
+                        "the system administrator or QA — may award a role that carries an "
+                        "electronic signature"
                     ),
                     field="roles",
-                    details={"role": code, "blocked_permissions": sorted(SIGNOFF_PERMISSIONS)},
+                    details={"role": code, "blocked_permissions": sorted(signature)},
                 )
-            for permission in ROLE_PERMISSIONS.get(code, ()):
-                # every permission the role carries must already be held by the actor
+            for permission in carried:
+                if permission in SIGNATURE_PERMISSIONS and principal.has("authority.grant"):
+                    # the grant itself is the delegated authority: the appointing office
+                    # does not practise the new approver's signature, it confers it
+                    continue
                 principal.assert_can_grant(permission)
 
     async def _load_user(self, user_id: uuid.UUID) -> User:

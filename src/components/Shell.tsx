@@ -22,7 +22,6 @@ import {
   Image as ImageIcon,
 } from 'lucide-react';
 import { useApp } from './AppProvider';
-import { Gauge } from 'lucide-react';
 import { PasswordChangeGate } from './PasswordChangeGate';
 import { MfaEnrolment } from './MfaEnrolment';
 import { ROLE_LABELS } from '@/core/types';
@@ -33,14 +32,17 @@ import { api, ApiError } from '@/core/api/client';
 
 const NAV = [
   { href: '/', ar: 'لوحة المؤشرات', en: 'Dashboard', icon: LayoutDashboard, perm: 'instruments.view' as const },
-  { href: '/lab', ar: 'لوحة المختبر والمعايرة', en: 'Laboratory', icon: Beaker, perm: 'calibration.run' as const },
-  {
-    href: '/lab/flow-rate',
-    ar: 'اختبار معدل التدفق',
-    en: 'Flow Rate (T02)',
-    icon: Gauge,
-    perm: 'calibration.run' as const,
-  },
+  // The laboratory is entered through its units: one tile per registered unit, each tile
+  // holding the twenty tests. The former single-screen laboratory and the standalone
+  // Flow Rate page are no longer navigation entries — Flow Rate is reached from the test
+  // tile of a unit, where its readings and charts belong.
+  //
+  // ``instruments.view`` and not ``calibration.run``: the administrator who registers a
+  // unit does not run calibrations, and hiding the shelf from the office that registers
+  // units would leave the "Add unit" form reachable only by URL. What the page offers is
+  // still decided by the server's permissions — the button appears only for a role that
+  // may create, and the API refuses anyone else.
+  { href: '/lab/units', ar: 'أجهزة المختبر', en: 'Laboratory units', icon: Beaker, perm: 'instruments.view' as const },
   { href: '/qa', ar: 'ضمان الجودة والاعتماد', en: 'Quality Assurance', icon: ShieldCheck, perm: 'calibration.review' as const },
   { href: '/engineering', ar: 'الصيانة والهندسة', en: 'Engineering', icon: Wrench, perm: 'maintenance.manage' as const },
   { href: '/control', ar: 'الإدارة المركزية', en: 'Central Control', icon: Cog, perm: 'settings.manage' as const },
@@ -128,6 +130,30 @@ export function Shell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (ready && !isLogin && !session) router.replace('/login');
   }, [ready, isLogin, session, router]);
+
+  /**
+   * The laboratory screens belong to the bench.
+   *
+   * QA and the administrators hold ``calibration.run`` too (the super administrator holds
+   * every permission), but they do not enter readings on a unit — QA reads results on the
+   * approval screen. Rather than hiding a menu entry and leaving a page reachable by URL,
+   * a principal who is not an operator is sent to its own landing screen. The server
+   * still refuses anything this does not cover.
+   */
+  const operator =
+    session?.roles.some((role) => role === 'ANALYST' || role === 'SUPERVISOR') ?? false;
+  // Registration of a unit is an administrative act; the administrator is therefore
+  // allowed onto the shelf to perform it, but nowhere else in the laboratory — the
+  // reading, the run and the approval stay with the bench and with QA.
+  const registersUnits = can('instruments.create');
+  const inLaboratory = path.startsWith('/lab');
+  const unitShelf = path === '/lab/units';
+  useEffect(() => {
+    if (!ready || !session || inLaboratory === false) return;
+    if (operator) return;
+    if (unitShelf && registersUnits) return;
+    router.replace(session.roles.includes('QA_APPROVER') ? '/qa' : '/');
+  }, [ready, session, operator, registersUnits, unitShelf, inLaboratory, router]);
 
   if (isLogin) return <>{children}</>;
 

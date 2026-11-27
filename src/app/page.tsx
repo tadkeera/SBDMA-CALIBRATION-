@@ -282,7 +282,7 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex gap-2">
-            <Link href="/lab" className="btn" style={{ background: '#fff', color: 'var(--brand)' }}>
+            <Link href="/lab/units" className="btn" style={{ background: '#fff', color: 'var(--brand)' }}>
               <FlaskConical size={15} /> {t('تشغيل معايرة', 'Run calibration')}
             </Link>
             <Link href="/qa" className="btn" style={{ background: 'rgba(255,255,255,.18)', color: '#fff', border: '1px solid rgba(255,255,255,.35)' }}>
@@ -411,7 +411,7 @@ export default function DashboardPage() {
                 'Open the laboratory panel to start the first LC-2050C UV run.',
               )}
               action={
-                <Link href="/lab" className="btn btn-primary mt-2">
+                <Link href="/lab/units" className="btn btn-primary mt-2">
                   {t('بدء المعايرة', 'Start calibration')} <ArrowUpRight size={14} />
                 </Link>
               }

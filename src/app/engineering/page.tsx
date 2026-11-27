@@ -243,7 +243,7 @@ export default function EngineeringPage() {
             ))}
           </ul>
           <div className="p-3">
-            <Link href="/lab" className="btn btn-ghost w-full justify-center">
+            <Link href="/lab/units" className="btn btn-ghost w-full justify-center">
               <Wrench size={13} /> {t('فتح تشغيل ما بعد العطل', 'Open post-breakdown run')}
             </Link>
           </div>

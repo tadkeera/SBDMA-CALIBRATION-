@@ -43,7 +43,12 @@ PERMISSION_META: dict[str, tuple[str, str, str]] = {
     "users.manage": ("إدارة المستخدمين", "Manage users", "admin"),
     "maintenance.manage": ("إدارة الصيانة", "Manage maintenance", "maintenance"),
     "reports.export": ("تصدير التقارير", "Export reports", "reports"),
-    "settings.manage": ("إعدادات النظام", "System settings", "admin"),
+    "tests.manage_status": ("تفعيل/تعطيل الاختبارات", "Enable/disable tests", "governance"),
+    "attachments.manage": ("إدارة مرفقات الأدلة", "Manage evidence attachments", "evidence"),
+    "deviations.raise": ("فتح انحراف OOS", "Raise an OOS deviation", "deviations"),
+    "deviations.investigate": ("تحقيق الانحرافات", "Investigate deviations", "deviations"),
+    "deviations.close": ("إغلاق الانحرافات", "Close deviations", "deviations"),
+    "authority.grant": ("منح صلاحية الاعتماد", "Grant approval authority", "governance"),
 }
 
 

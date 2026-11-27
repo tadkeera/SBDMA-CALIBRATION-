@@ -17,89 +17,128 @@
  * using a *separate context* is what makes the "another user" check meaningful.
  */
 
-import { bilingual, open, settle, signInAs, withSignedInPage } from './lib/browser';
-import { expect, test } from './lib/fixtures';
+import { bilingual, open, settle, signInAs } from "./lib/browser";
+import { expect, test } from "./lib/fixtures";
 
-test('the Control Center enables and disables a test, and the laboratory reflects it', async ({
+test("the Control Center enables and disables a test, and the laboratory reflects it", async ({
   page,
   browser,
   baseURL,
 }) => {
-  await signInAs(page, 'admin');
-  await open(page, '/control');
-  await page.getByRole('button', { name: bilingual('حالة الاختبارات', 'Test status') }).click();
+  await signInAs(page, "admin");
+  await open(page, "/control");
+  await page
+    .getByRole("button", { name: bilingual("حالة الاختبارات", "Test status") })
+    .click();
 
-  const panel = page.locator('section', { hasText: /Enable and disable tests|تفعيل وتعطيل الاختبارات/ });
+  const panel = page.locator("section", {
+    hasText: /Enable and disable tests|تفعيل وتعطيل الاختبارات/,
+  });
   await expect(panel).toBeVisible({ timeout: 30_000 });
-  await expect(panel.locator('table tbody tr')).toHaveCount(20);
+  await expect(panel.locator("table tbody tr")).toHaveCount(20);
 
-  const row = panel.locator('tr', { hasText: 'T13' });
-  const toggle = row.getByRole('switch');
-  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  const row = panel.locator("tr", { hasText: "T13" });
+  const toggle = row.getByRole("switch");
+  await expect(toggle).toHaveAttribute("aria-checked", "true");
 
   // disable, with the reason the server demands
   await toggle.click();
-  await page.getByRole('textbox').last().fill('E2E: leak sensor under repair — release 2.2.0 check');
-  await page.getByRole('button', { name: /^(Disable|تعطيل)$/ }).click();
-  await expect(toggle).toHaveAttribute('aria-checked', 'false', { timeout: 30_000 });
+  await page
+    .getByRole("textbox")
+    .last()
+    .fill("E2E: leak sensor under repair — release 2.2.0 check");
+  await page.getByRole("button", { name: /^(Disable|تعطيل)$/ }).click();
+  await expect(toggle).toHaveAttribute("aria-checked", "false", {
+    timeout: 30_000,
+  });
   await expect(row).toContainText(/Disabled|معطّل/);
 
   // a different user, in a different browser context, no longer sees the test
-  const other = await browser.newContext({ baseURL, viewport: { width: 1500, height: 1000 } });
+  const other = await browser.newContext({
+    baseURL,
+    viewport: { width: 1500, height: 1000 },
+  });
   try {
     const analyst = await other.newPage();
-    await signInAs(analyst, 'analyst');
-    await open(analyst, '/lab');
-    const navigator = analyst.locator('section', { hasText: /Protocol tests|اختبارات البروتوكول/ });
-    await expect(navigator).toBeVisible({ timeout: 30_000 });
-    await expect(navigator.locator('li')).toHaveCount(19);
-    await expect(navigator).not.toContainText('T13');
+    await signInAs(analyst, "analyst");
+    await open(analyst, "/lab/units");
+    await analyst.locator('main a[href^="/lab/"][href*="-"]').first().click();
+    // the nineteen active tests are the tiles of the unit; T13 is not among them
+    const navigator = analyst.locator("main");
+    await expect(navigator.locator('a[href*="/T"]').first()).toBeVisible({
+      timeout: 30_000,
+    });
+    await expect(navigator.locator('a[href*="/T"]')).toHaveCount(19);
+    await expect(navigator).not.toContainText("T13");
   } finally {
     await other.close();
   }
 
   // restore, so the rest of the suite (and the demonstration database) is unchanged
   await toggle.click();
-  await page.getByRole('textbox').last().fill('E2E: sensor replaced — test restored');
-  await page.getByRole('button', { name: /^(Enable|تفعيل)$/ }).click();
-  await expect(toggle).toHaveAttribute('aria-checked', 'true', { timeout: 30_000 });
+  await page
+    .getByRole("textbox")
+    .last()
+    .fill("E2E: sensor replaced — test restored");
+  await page.getByRole("button", { name: /^(Enable|تفعيل)$/ }).click();
+  await expect(toggle).toHaveAttribute("aria-checked", "true", {
+    timeout: 30_000,
+  });
 });
 
-test('the documented procedure is English and left-to-right', async ({ page }) => {
-  await signInAs(page, 'analyst');
-  await open(page, '/lab');
+test("the documented procedure is English and left-to-right", async ({
+  page,
+}) => {
+  await signInAs(page, "analyst");
+  await open(page, "/lab/units");
+  await page.locator('main a[href^="/lab/"][href*="-"]').first().click();
+  await page.locator('a[href*="/T02"]').first().click();
 
-  const procedure = page.locator('details', { hasText: /Documented procedure/ }).first();
+  // the procedure is a card in the generic test page (2.4.0), no longer a collapsible
+  const procedure = page
+    .locator("section, div.card", { hasText: /Documented procedure/ })
+    .last()
+    .locator("ol")
+    .first()
+    .locator("..");
   await expect(procedure).toBeVisible({ timeout: 30_000 });
 
-  const steps = procedure.locator('ol');
-  await expect(steps).toHaveAttribute('dir', 'ltr');
-  await expect(steps).toHaveAttribute('lang', 'en');
-  await expect(steps.locator('li')).toHaveCount(6);
+  const steps = procedure.locator("ol");
+  await expect(steps).toHaveAttribute("dir", "ltr");
+  await expect(steps).toHaveAttribute("lang", "en");
+  await expect(steps.locator("li")).toHaveCount(6);
 
   const text = (await steps.innerText()).trim();
   // professional English wording, and not a single Arabic letter
-  expect(text).toMatch(/USP|<1058>|integrity guide|instrument|calibration|procedure/i);
+  expect(text).toMatch(
+    /USP|<1058>|integrity guide|instrument|calibration|procedure/i,
+  );
   expect(text).not.toMatch(/[\u0600-\u06FF]/);
 });
 
-test('the Reference Manual is searchable and prints a PDF per test', async ({ page }) => {
-  await signInAs(page, 'analyst');
-  await open(page, '/control');
-  await page.getByRole('button', { name: bilingual('الدليل المرجعي', 'Reference Manual') }).click();
+test("the Reference Manual is searchable and prints a PDF per test", async ({
+  page,
+}) => {
+  await signInAs(page, "analyst");
+  await open(page, "/control");
+  await page
+    .getByRole("button", {
+      name: bilingual("الدليل المرجعي", "Reference Manual"),
+    })
+    .click();
 
-  const search = page.getByPlaceholder('Search code, name, standard…');
+  const search = page.getByPlaceholder("Search code, name, standard…");
   await expect(search).toBeVisible({ timeout: 30_000 });
 
   // the filter narrows twenty sections down to the wavelength family
-  await search.fill('wavelength');
-  const entries = page.locator('ul li button', { hasText: /^T\d\d/ });
+  await search.fill("wavelength");
+  const entries = page.locator("ul li button", { hasText: /^T\d\d/ });
   await expect(entries.first()).toBeVisible();
   const count = await entries.count();
   expect(count).toBeGreaterThanOrEqual(3);
   expect(count).toBeLessThan(20);
 
-  await page.locator('ul li button', { hasText: 'T14' }).click();
+  await page.locator("ul li button", { hasText: "T14" }).click();
   await settle(page);
 
   const body = page.locator('[dir="ltr"]').last();
@@ -113,26 +152,34 @@ test('the Reference Manual is searchable and prints a PDF per test', async ({ pa
   await expect(body).toContainText(/USP <857>/);
 
   // the curve is drawn from the ideal readings, not an empty frame
-  await expect(body.locator('svg path').first()).toBeVisible();
+  await expect(body.locator("svg path").first()).toBeVisible();
 
-  const download = page.waitForEvent('download', { timeout: 60_000 });
-  await body.getByRole('button', { name: /^PDF$/ }).click();
+  const download = page.waitForEvent("download", { timeout: 60_000 });
+  await body.getByRole("button", { name: /^PDF$/ }).click();
   const file = await download;
   expect(file.suggestedFilename()).toMatch(/Reference-Manual-T14\.pdf$/);
 });
 
-test('a single test can be run without the other nineteen', async ({ browser, baseURL }) => {
-  await withSignedInPage(browser, baseURL, 'qa', async (page) => {
-    await open(page, '/lab');
-    const toggle = page.getByRole('checkbox').filter({ hasText: '' }).first();
-    // the scope switch lives in the run bar; scoped runs are recorded with one result
-    const single = page.getByTitle(/Run only the test on screen|تشغيل الاختبار المعروض فقط/);
-    await expect(single).toBeVisible({ timeout: 30_000 });
-    await single.locator('input[type="checkbox"]').check();
-    await expect(page.getByText(/Single test only|اختبار واحد فقط/).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: /^Run T\d\d$|^تشغيل T\d\d$/ })).toBeVisible();
-    // restore the default for any later spec
-    await single.locator('input[type="checkbox"]').uncheck();
-    expect(toggle).toBeTruthy();
+test("a single test can be run without the other nineteen", async ({
+  page,
+}) => {
+  // The bench is the analyst's: since 2.4.0 QA is not an operator of the laboratory and
+  // is sent to the approval screen, so the run is scoped by the analyst's own address.
+  // The "one test only" switch of 2.3.0 is gone for the same reason — a test page records
+  // a run for that test on that unit and for nothing else.
+  await signInAs(page, "analyst");
+  await open(page, "/lab/units");
+  await page.locator('main a[href^="/lab/"][href*="-"]').first().click();
+  await page.locator('a[href*="/T02"]').first().click();
+  await expect(page).toHaveURL(/\/T02$/);
+  await expect(
+    page.getByRole("button", { name: /Run Calibration|تشغيل المعايرة/ }),
+  ).toBeVisible({
+    timeout: 30_000,
   });
+
+  // the run this page records is scoped to one test: the scope selector names T02 and
+  // the twenty-test selector of the former single-screen laboratory is not on the page
+  await expect(page.locator("body")).not.toContainText("T20");
+  await expect(page.locator("body")).toContainText("T02");
 });

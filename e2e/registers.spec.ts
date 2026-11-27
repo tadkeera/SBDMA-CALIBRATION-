@@ -66,7 +66,7 @@ test('the audit trail lists chained records and verifies intact', async ({ brows
 
 test('every page an analyst needs is reachable without a redirect to login', async ({ page }) => {
   await signInAs(page, 'analyst');
-  for (const path of ['/', '/lab', '/qa', '/engineering', '/control', '/deviations', '/notifications']) {
+  for (const path of ['/', '/lab/units', '/qa', '/engineering', '/control', '/deviations', '/notifications']) {
     await open(page, path);
     await expect(page, `${path} bounced a signed-in analyst to /login`).not.toHaveURL(/\/login/);
     await expect(page.locator('body')).not.toBeEmpty();

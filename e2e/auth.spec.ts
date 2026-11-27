@@ -40,8 +40,13 @@ test.describe('identity', () => {
     await signInAs(page, 'analyst');
 
     await expect(page).not.toHaveURL(/\/login/);
-    await open(page, '/lab');
-    await expect(page.getByRole('button', { name: 'Run Calibration' })).toBeVisible();
+    // the laboratory is entered through its units since 2.4.0: the shelf, then the unit,
+    // then the test — the analyst's path through the twenty protocol tests
+    await open(page, '/lab/units');
+    await page.locator('main a[href^="/lab/"][href*="-"]').first().click();
+    await expect(page.locator('a[href*="/T02"]').first()).toBeVisible({ timeout: 30_000 });
+    await page.locator('a[href*="/T02"]').first().click();
+    await expect(page.getByRole('button', { name: /Run Calibration|تشغيل المعايرة/ })).toBeVisible();
 
     const me = await page.request.get('/api/v1/auth/me');
     expect(me.ok()).toBeTruthy();
@@ -82,9 +87,12 @@ test.describe('identity', () => {
     const users = await page.request.get('/api/v1/users');
     expect(users.status(), 'a viewer must not be able to read the user register').toBe(403);
 
-    // The same rule reaches the screen: a viewer cannot start a calibration at all,
-    // so the run button never becomes clickable.
-    await open(page, '/lab');
-    await expect(page.getByRole('button', { name: 'Run Calibration' })).toBeDisabled();
+    // The same rule reaches the screen: a viewer is not an operator of the laboratory at
+    // all, so the laboratory route sends it back to its own landing screen rather than
+    // showing a test page with a disabled button.
+    await open(page, '/lab/units');
+    await expect(page).not.toHaveURL(/\/lab/, { timeout: 30_000 });
+    const shelf = await page.request.get('/api/v1/instruments');
+    expect(shelf.status(), 'a viewer may read the register').toBe(200);
   });
 });
