@@ -110,6 +110,80 @@ async def test_a_second_unit_is_entitled_to_the_same_protocol_tests(client, prep
     assert len(tests) == 20
 
 
+async def test_an_account_needing_both_gates_can_still_get_through_them(client, prepared_db):
+    """
+    Regression, found on production during the 2.4.0 acceptance walk.
+
+    An account created by an administrator for a role that mandates a second factor needs
+    *both* a new password and an enrolled authenticator. The two gates used to refuse every
+    path the other one needed, so such an account was frozen: it could not change the
+    password because enrolment came first, and could not enrol because the password came
+    first. Each gate now refuses everything except the two gates' own endpoints, so either
+    order works — which is what the two screens assume.
+    """
+    root = await _login(client, "admin")
+    created = await client.post(
+        "/api/v1/users",
+        headers=root["hash"],
+        params={"reason": "اختبار قبول: حساب بحاجزين (كلمة مرور + تحقق بخطوتين)"},
+        json={
+            "username": "two.gates",
+            "email": "two.gates@sbdma.gov.ye",
+            "full_name_ar": "حساب بحاجزين",
+            "full_name_en": "Two Gates",
+            "password": "Tmp-Str0ng-Pass!2026",
+            "roles": ["SUPERVISOR"],
+        },
+    )
+    assert created.status_code == 201, created.text
+
+    signed_in = await client.post(
+        "/api/v1/auth/login", json={"username": "two.gates", "password": "Tmp-Str0ng-Pass!2026"}
+    )
+    assert signed_in.status_code == 200, signed_in.text
+    restricted = {"Authorization": f"Bearer {signed_in.json()['data']['access_token']}"}
+
+    # work is still refused, and the refusal is one of the two gates rather than a mystery
+    blocked = await client.get("/api/v1/runs", headers=restricted)
+    assert blocked.status_code == 403
+    assert blocked.json()["errors"][0]["code"] in {
+        "PASSWORD_CHANGE_REQUIRED",
+        "MFA_ENROLMENT_REQUIRED",
+    }
+
+    # gate one: the password, reachable although the second factor is also outstanding
+    changed = await client.post(
+        "/api/v1/auth/change-password",
+        headers=restricted,
+        json={
+            "current_password": "Tmp-Str0ng-Pass!2026",
+            "new_password": "Tmp-Str0ng-Pass!2027",
+            "reason": "اختبار قبول: تغيير كلمة المرور المؤقتة قبل التوقيع",
+        },
+    )
+    assert changed.status_code == 200, changed.text
+
+    # gate two: enrolment, reachable through the fresh session the change produced
+    signed_in = await client.post(
+        "/api/v1/auth/login", json={"username": "two.gates", "password": "Tmp-Str0ng-Pass!2027"}
+    )
+    restricted = {"Authorization": f"Bearer {signed_in.json()['data']['access_token']}"}
+    begun = await client.post("/api/v1/auth/mfa/enrol", headers=restricted)
+    assert begun.status_code == 200, begun.text
+    import pyotp
+
+    activated = await client.post(
+        "/api/v1/auth/mfa/activate",
+        headers=restricted,
+        json={"code": pyotp.TOTP(begun.json()["data"]["secret"]).now()},
+    )
+    assert activated.status_code == 200, activated.text
+
+    # and now the same call that was refused is allowed through
+    allowed = await client.get("/api/v1/runs", headers=restricted)
+    assert allowed.status_code == 200, allowed.text
+
+
 # ────────────────────────── per-test definition/evaluate ──────────────────── #
 
 

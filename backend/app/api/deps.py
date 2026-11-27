@@ -101,13 +101,23 @@ async def get_principal(request: Request, session: SessionDep) -> Principal:
     # two things: identify itself and replace that password. Everything else is
     # refused, because a record signed with a credential the administrator knows
     # is not attributable to the signer.
+    #
+    # The two gates are listed explicitly (rather than one refusing "everything
+    # else") because a new account can need *both* at once: an administrator-issued
+    # password on a role that also mandates a second factor. Refusing each gate every
+    # path the other one needs left such an account frozen — it could not set the
+    # password because enrolment came first and could not enrol because the password
+    # came first. The refusal below is therefore subtracted, and the order in which the
+    # screens ask for the two is a presentation choice, not a deadlock.
     if principal.must_change_password and request.url.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
-        raise PasswordChangeRequiredError()
+        if request.url.path not in MFA_ENROLMENT_ALLOWED_PATHS:
+            raise PasswordChangeRequiredError()
 
     # Same idea for a missing second factor on a role that requires one: the user
     # can reach enrolment and nothing else, so they are never stranded.
     if principal.mfa_enrolment_required and request.url.path not in MFA_ENROLMENT_ALLOWED_PATHS:
-        raise MfaEnrolmentRequiredError()
+        if request.url.path not in PASSWORD_CHANGE_ALLOWED_PATHS:
+            raise MfaEnrolmentRequiredError()
 
     request.state.principal = principal
     user_ctx.set(principal.username)
